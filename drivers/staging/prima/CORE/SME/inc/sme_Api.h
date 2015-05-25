@@ -3505,4 +3505,14 @@ eHalStatus sme_RegisterBtCoexTDLSCallback
 ---------------------------------------------------------------------------*/
 tANI_BOOLEAN smeNeighborRoamIsHandoffInProgress(tHalHandle hHal);
 
+/* ---------------------------------------------------------------------------
+    \fn sme_SetRtsCtsHtVht
+    \brief  API to to enable/disable RTS/CTS for different modes.
+
+    \param  set_value - Bit mask value to enable RTS/CTS for different modes.
+    \- return VOS_STATUS_SUCCES if INdication is posted to
+       WDA else return eHAL_STATUS_FAILURE
+    -------------------------------------------------------------------------*/
+eHalStatus sme_SetRtsCtsHtVht(tHalHandle hHal, tANI_U32 set_value);
+
 #endif //#if !defined( __SME_API_H )
