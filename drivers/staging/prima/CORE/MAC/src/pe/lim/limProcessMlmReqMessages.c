@@ -2840,6 +2840,9 @@ limProcessMlmDisassocReqNtf(tpAniSirGlobal pMac, eHalStatus suspendStatus, tANI_
     tLimMlmDisassocCnf       mlmDisassocCnf;
     tpPESession              psessionEntry;
     extern tANI_BOOLEAN     sendDisassocFrame;
+    tSirSmeDisassocRsp      *pSirSmeDisassocRsp;
+    tANI_U32                *pMsg;
+    tANI_U8                 *pBuf;
 
     if(eHAL_STATUS_SUCCESS != suspendStatus)
     {
@@ -2935,11 +2938,37 @@ limProcessMlmDisassocReqNtf(tpAniSirGlobal pMac, eHalStatus suspendStatus, tANI_
            "or in some transit state, Addr= "
            MAC_ADDRESS_STR),MAC_ADDR_ARRAY(pMlmDisassocReq->peerMacAddr));)
 
-        /// Prepare and Send LIM_MLM_DISASSOC_CNF
+        /*
+         * Disassociation response due to
+         * host triggered disassociation
+         */
 
-        mlmDisassocCnf.resultCode = eSIR_SME_INVALID_PARAMETERS;
+         pSirSmeDisassocRsp = vos_mem_malloc(sizeof(tSirSmeDisassocRsp));
+         if ( NULL == pSirSmeDisassocRsp )
+         {
+            // Log error
+             limLog(pMac, LOGP,
+                FL("call to AllocateMemory failed for eWNI_SME_DISASSOC_RSP"));
+             return;
+         }
+         limLog(pMac, LOG1, FL("send eWNI_SME_DISASSOC_RSP with "
+                "retCode: %d for "MAC_ADDRESS_STR),eSIR_SME_DEAUTH_STATUS,
+                 MAC_ADDR_ARRAY(pMlmDisassocReq->peerMacAddr));
+         pSirSmeDisassocRsp->messageType = eWNI_SME_DISASSOC_RSP;
+         pSirSmeDisassocRsp->length      = sizeof(tSirSmeDisassocRsp);
+         pSirSmeDisassocRsp->sessionId = pMlmDisassocReq->sessionId;
+         pSirSmeDisassocRsp->transactionId = 0;
+         pSirSmeDisassocRsp->statusCode = eSIR_SME_DEAUTH_STATUS;
 
-        goto end;
+         pBuf  = (tANI_U8 *) pSirSmeDisassocRsp->peerMacAddr;
+         vos_mem_copy( pBuf, pMlmDisassocReq->peerMacAddr, sizeof(tSirMacAddr));
+
+         pMsg = (tANI_U32*) pSirSmeDisassocRsp;
+
+         limSendSmeDisassocDeauthNtf( pMac, eHAL_STATUS_SUCCESS,
+                                                (tANI_U32*) pMsg );
+         return;
+
     }
 
     //pStaDs->mlmStaContext.rxPurgeReq = 1;
@@ -3163,6 +3192,9 @@ limProcessMlmDeauthReqNtf(tpAniSirGlobal pMac, eHalStatus suspendStatus, tANI_U3
     tLimMlmDeauthReq        *pMlmDeauthReq;
     tLimMlmDeauthCnf        mlmDeauthCnf;
     tpPESession             psessionEntry;
+    tSirSmeDeauthRsp        *pSirSmeDeauthRsp;
+    tANI_U8                 *pBuf;
+    tANI_U32                *pMsg;
 
 
     if(eHAL_STATUS_SUCCESS != suspendStatus)
@@ -3344,11 +3376,38 @@ limProcessMlmDeauthReqNtf(tpAniSirGlobal pMac, eHalStatus suspendStatus, tANI_U3
            FL("received MLM_DEAUTH_REQ for STA that either has no context or in some transit state, Addr="
            MAC_ADDRESS_STR),MAC_ADDR_ARRAY(pMlmDeauthReq->peerMacAddr));)
 
-        /// Prepare and Send LIM_MLM_DEAUTH_CNF
+        /*
+         * Deauthentication response to host triggered
+         * deauthentication.
+         */
+        pSirSmeDeauthRsp = vos_mem_malloc(sizeof(tSirSmeDeauthRsp));
+        if ( NULL == pSirSmeDeauthRsp )
+        {
+            // Log error
+            limLog(pMac, LOGP,
+                   FL("call to AllocateMemory failed for eWNI_SME_DEAUTH_RSP"));
 
-        mlmDeauthCnf.resultCode    = eSIR_SME_INVALID_PARAMETERS;
+            return;
+        }
+        limLog(pMac, LOG1, FL("send eWNI_SME_DEAUTH_RSP with "
+               "retCode: %d for"MAC_ADDRESS_STR),eSIR_SME_DEAUTH_STATUS,
+               MAC_ADDR_ARRAY(pMlmDeauthReq->peerMacAddr));
+        pSirSmeDeauthRsp->messageType = eWNI_SME_DEAUTH_RSP;
+        pSirSmeDeauthRsp->length  = sizeof(tSirSmeDeauthRsp);
+        pSirSmeDeauthRsp->statusCode = eSIR_SME_DEAUTH_STATUS;
+        pSirSmeDeauthRsp->sessionId = pMlmDeauthReq->sessionId;
+        pSirSmeDeauthRsp->transactionId = 0;
 
-        goto end;
+        pBuf  = (tANI_U8 *) pSirSmeDeauthRsp->peerMacAddr;
+        vos_mem_copy( pBuf, pMlmDeauthReq->peerMacAddr, sizeof(tSirMacAddr));
+
+        pMsg = (tANI_U32*)pSirSmeDeauthRsp;
+
+        limSendSmeDisassocDeauthNtf( pMac, eHAL_STATUS_SUCCESS,
+                                            (tANI_U32*) pMsg );
+
+        return;
+
     }
 
     //pStaDs->mlmStaContext.rxPurgeReq     = 1;
