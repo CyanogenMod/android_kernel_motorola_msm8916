@@ -413,6 +413,7 @@ struct stml0xx_data {
 
 	bool is_suspended;
 	bool pending_wake_work;
+	struct led_classdev led_cdev;
 #ifdef CONFIG_MMI_HALL_NOTIFICATIONS
 	struct mmi_hall_data *hall_data;
 #endif
