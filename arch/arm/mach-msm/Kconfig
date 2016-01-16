@@ -1074,12 +1074,12 @@ config MMI_LUX_DTB
 config MMI_MERLIN_DTB
 	depends on ARCH_MSM8916
 	default n
-	bool "Motorola Lux Device DTBs"
+	bool "Motorola Merlin Device DTBs"
 	help
-	  Only include Motorola Lux specific DTBs to limit the number that
+	  Only include Motorola Merlin specific DTBs to limit the number that
 	  get built during kernel compilation.
 
-	  Lux is a Motorola device that uses MSM8939 chipset, which uses the
+	  Merlin is a Motorola device that uses MSM8939 chipset, which uses the
 	  MSM8916 defconfig.  Due to its many revisions, adding all of the device
 	  trees will consume at least 1MB of space.
 
