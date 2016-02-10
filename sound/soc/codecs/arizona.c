@@ -105,7 +105,7 @@ static int arizona_spk_ev(struct snd_soc_dapm_widget *w,
 		switch (arizona->type) {
 		case WM8280:
 		case WM5110:
-			msleep(10);
+			usleep_range(10000, 10001);
 			break;
 		default:
 			break;
@@ -979,17 +979,17 @@ static int arizona_update_input(struct arizona* arizona, bool enable)
 	if (enable) {
 		arizona_florida_mute_analog(arizona, ARIZONA_IN1L_MUTE);
 
-		msleep(10);
+		usleep_range(10000, 10001);
 
 		regmap_write(arizona->regmap, 0x3A6, 0x5555);
 		regmap_write(arizona->regmap, 0x3A5, 0x3);
 	} else {
 		regmap_read(arizona->regmap, 0x3A5, &val);
 		if (val) {
-			msleep(10);
+			usleep_range(10000, 10001);
 			regmap_write(arizona->regmap, 0x3A5, 0x0);
 			regmap_write(arizona->regmap, 0x3A6, 0x0);
-			msleep(5);
+			usleep_range(5000, 5001);
 		}
 
 		arizona_florida_mute_analog(arizona, 0);
@@ -1035,7 +1035,7 @@ int arizona_in_ev(struct snd_soc_dapm_widget *w, struct snd_kcontrol *kcontrol,
 
 		/* If this is the last input pending then allow VU */
 		if (priv->in_pending == 0) {
-			msleep(1);
+			usleep_range(1000, 1001);
 			arizona_in_set_vu(w->codec, 1);
 		}
 		break;
@@ -1170,11 +1170,11 @@ static int florida_hp_post_enable(struct snd_soc_dapm_widget *w)
 	switch (w->shift) {
 	case ARIZONA_OUT1L_ENA_SHIFT:
 		if (!(val & ARIZONA_DRE1L_ENA_MASK))
-			msleep(10);
+			usleep_range(10000, 10001);
 		break;
 	case ARIZONA_OUT1R_ENA_SHIFT:
 		if (!(val & ARIZONA_DRE1R_ENA_MASK))
-			msleep(10);
+			usleep_range(10000, 10001);
 		break;
 
 	default:
@@ -1195,7 +1195,7 @@ static int florida_hp_pre_disable(struct snd_soc_dapm_widget *w)
 				      ARIZONA_WRITE_SEQUENCER_CTRL_0,
 				      ARIZONA_WSEQ_ENA | ARIZONA_WSEQ_START |
 				      0x138);
-			msleep(10);
+			usleep_range(10000, 10001);
 			snd_soc_update_bits(w->codec,
 					    ARIZONA_OUTPUT_PATH_CONFIG_1L,
 					    ARIZONA_OUT1L_PGA_VOL_MASK,
@@ -1208,7 +1208,7 @@ static int florida_hp_pre_disable(struct snd_soc_dapm_widget *w)
 				      ARIZONA_WRITE_SEQUENCER_CTRL_0,
 				      ARIZONA_WSEQ_ENA | ARIZONA_WSEQ_START |
 				      0x13d);
-			msleep(10);
+			usleep_range(10000, 10001);
 			snd_soc_update_bits(w->codec,
 					    ARIZONA_OUTPUT_PATH_CONFIG_1R,
 					    ARIZONA_OUT1R_PGA_VOL_MASK,
@@ -1230,7 +1230,7 @@ static int florida_hp_post_disable(struct snd_soc_dapm_widget *w)
 	switch (w->shift) {
 	case ARIZONA_OUT1L_ENA_SHIFT:
 		if (!(val & ARIZONA_DRE1L_ENA_MASK)) {
-			msleep(17);
+			usleep_range(17000, 17001);
 			snd_soc_update_bits(w->codec,
 					    ARIZONA_OUTPUT_PATH_CONFIG_1L,
 					    ARIZONA_OUT1L_PGA_VOL_MASK,
@@ -1239,7 +1239,7 @@ static int florida_hp_post_disable(struct snd_soc_dapm_widget *w)
 		break;
 	case ARIZONA_OUT1R_ENA_SHIFT:
 		if (!(val & ARIZONA_DRE1R_ENA_MASK)) {
-			msleep(17);
+			usleep_range(17000, 17001);
 			snd_soc_update_bits(w->codec,
 					    ARIZONA_OUTPUT_PATH_CONFIG_1R,
 					    ARIZONA_OUT1R_PGA_VOL_MASK,
@@ -1265,7 +1265,7 @@ int arizona_out_ev(struct snd_soc_dapm_widget *w,
 		switch (w->shift) {
 		case ARIZONA_OUT1L_ENA_SHIFT:
 		case ARIZONA_OUT1R_ENA_SHIFT:
-			msleep(17);
+			usleep_range(17000, 17001);
 
 			switch (priv->arizona->type) {
 			case WM5110:
@@ -1280,7 +1280,7 @@ int arizona_out_ev(struct snd_soc_dapm_widget *w,
 		case ARIZONA_OUT2R_ENA_SHIFT:
 		case ARIZONA_OUT3L_ENA_SHIFT:
 		case ARIZONA_OUT3R_ENA_SHIFT:
-			msleep(17);
+			usleep_range(17000, 17001);
 			break;
 
 		default:
@@ -1363,7 +1363,7 @@ static int arizona_slim_get_la(struct slim_device *dev, u8 *la)
 	do {
 		if (!slim_audio_dev) {
 			dev_err(&dev->dev, "Waiting for probe...\n");
-			msleep(10);
+			usleep_range(10000, 10001);
 			continue;
 		}
 
@@ -1371,7 +1371,7 @@ static int arizona_slim_get_la(struct slim_device *dev, u8 *la)
 				sizeof(e_addr), la);
 		if (ret != 0) {
 			dev_err(&dev->dev, "Waiting for enum...\n");
-			msleep(10);
+			usleep_range(10000, 10001);
 		}
 	} while (!la);
 
@@ -1681,8 +1681,6 @@ int arizona_slim_rx_ev(struct snd_soc_dapm_widget *w,
 		if (ret != 0)
 			dev_err(arizona->dev, "Failed to remove rx: %d\n", ret);
 
-		/* Cargo culted from QC */
-		usleep_range(15000, 15000);
 		break;
 	default:
 		mutex_unlock(&slim_rx_lock);
@@ -3126,7 +3124,7 @@ static int arizona_enable_fll(struct arizona_fll *fll)
 				    &val);
 			if (val & (ARIZONA_FLL1_CLOCK_OK_STS << (fll->id - 1)))
 				break;
-			msleep(10);
+			usleep_range(10000, 10001);
 		}
 		if (i == 25)
 			arizona_fll_warn(fll, "Timed out waiting for lock\n");
@@ -3160,7 +3158,7 @@ static void arizona_disable_fll(struct arizona_fll *fll)
 			    &val);
 		if (!(val & (ARIZONA_FLL1_CLOCK_OK_STS << (fll->id - 1))))
 			break;
-		msleep(10);
+		usleep_range(10000, 10001);
 	}
 	if (i == 25)
 		arizona_fll_warn(fll, "Timed out waiting for disable\n");
