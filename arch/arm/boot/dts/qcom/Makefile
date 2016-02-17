@@ -257,6 +257,9 @@ endif
 # Harpia
 dtb-$(CONFIG_ARCH_MSM8916) += msm8916-harpia-p0.dtb
 dtb-$(CONFIG_ARCH_MSM8916) += msm8916-harpia-p0a.dtb
+dtb-$(CONFIG_ARCH_MSM8916) += msm8916-harpia-p1.dtb
+dtb-$(CONFIG_ARCH_MSM8916) += msm8916-harpia-p1a.dtb
+dtb-$(CONFIG_ARCH_MSM8916) += msm8916-harpia-p1ad.dtb
 
 # Motorola 8939 Devices
 ifeq ($(CONFIG_MMI_LUX_DTB),y)
