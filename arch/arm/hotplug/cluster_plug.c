@@ -2,7 +2,7 @@
  * Cluster-plug CPU Hotplug Driver
  * Designed for homogeneous ARM big.LITTLE systems
  *
- * Copyright 2015 Sultan Qasim Khan
+ * Copyright (C) 2015-2016 Sultan Qasim Khan
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -34,7 +34,7 @@
 //#define DEBUG_CLUSTER_PLUG
 #undef DEBUG_CLUSTER_PLUG
 
-#define CLUSTER_PLUG_MAJOR_VERSION	1
+#define CLUSTER_PLUG_MAJOR_VERSION	2
 #define CLUSTER_PLUG_MINOR_VERSION	0
 
 #define DEF_HYSTERESIS			(10)
@@ -58,6 +58,9 @@ static unsigned int sampling_time = DEF_SAMPLING_MS;
 module_param(sampling_time, uint, 0664);
 
 static unsigned int cur_hysteresis = DEF_HYSTERESIS;
+
+static unsigned int prefer_big = 1;
+module_param(prefer_big, uint, 0664);
 
 static bool suspended = false;
 
@@ -103,29 +106,40 @@ static unsigned int calculate_loaded_cpus(void)
 	return loaded_cpus;
 }
 
-static void __ref plug_clusters(bool enable_little)
+static void __ref plug_clusters(bool big, bool little)
 {
 	unsigned int cpu;
 	int ret;
-	bool powerhal_override = false;
+	bool no_offline = false;
 
 #ifdef DEBUG_CLUSTER_PLUG
-	if (enable_little) pr_info("enabling little cluster\n");
-	else pr_info("disabling little cluster\n");
+	pr_info("plugging big.LITTLE: %i %i\n", (int)big, (int)little);
 #endif
 
+	/* CPUs 0-3 are big, and 4-7 are little on MSM8939.
+	 * We will first online cores, then offline, to avoid situations where
+	 * the entire first cluster is offlined before we activate the second one.
+	 */
 	for_each_present_cpu(cpu) {
-		if (cpu < 4 || enable_little) {
-			if (cpu_online(cpu)) continue;
-			if (powerhal_override && cpu < 4) continue;
-			ret = cpu_up(cpu);
+		if ((cpu < 4 && big) || (cpu >= 4 && little)) {
+			if (unlikely(!cpu_online(cpu))) {
+				ret = cpu_up(cpu);
 
-			/* PowerHAL may force big cores offline */
-			if (ret == -EPERM && cpu < 4) {
-				enable_little = true;
-				powerhal_override = true;
+				/* PowerHAL or thermal throttling are interfering.
+				 * Don't offline cores to avoid a situation with
+				 * no cores online.
+				 */
+				if (ret == -EPERM)
+					no_offline = true;
 			}
-		} else {
+		}
+	}
+
+	if (unlikely(no_offline))
+		return;
+
+	for_each_present_cpu(cpu) {
+		if ((cpu < 4 && !big) || (cpu >= 4 && !little)) {
 			cpu_down(cpu);
 		}
 	}
@@ -145,18 +159,22 @@ static void __ref cluster_plug_work_fn(struct work_struct *work)
 		if (!suspended) {
 			if (loaded_cpus >= 3) {
 				cur_hysteresis = hysteresis;
-				if (online_cpus <= 4)
-					plug_clusters(true);
+				if (online_cpus <= 4) {
+					plug_clusters(true, true);
+				}
 			} else if (cur_hysteresis > 0) {
 				cur_hysteresis -= 1;
 			} else {
-				plug_clusters(false);
+				plug_clusters(prefer_big, !prefer_big);
 			}
 		}
+		queue_delayed_work(clusterplug_wq, &cluster_plug_work,
+			msecs_to_jiffies(sampling_time));
+	} else {
+		/* reduce overhead when inactive */
+		queue_delayed_work(clusterplug_wq, &cluster_plug_work,
+			msecs_to_jiffies(500));
 	}
-
-	queue_delayed_work(clusterplug_wq, &cluster_plug_work,
-		msecs_to_jiffies(sampling_time));
 }
 
 #if defined(CONFIG_POWERSUSPEND) || defined(CONFIG_HAS_EARLYSUSPEND)
@@ -167,21 +185,15 @@ static void __ref cluster_plug_suspend(struct power_suspend *handler)
 static void __ref cluster_plug_suspend(struct early_suspend *handler)
 #endif
 {
-	if (cluster_plug_active) {
-		int cpu;
+	flush_workqueue(clusterplug_wq);
 
-		flush_workqueue(clusterplug_wq);
+	mutex_lock(&cluster_plug_mutex);
+	suspended = true;
+	mutex_unlock(&cluster_plug_mutex);
 
-		mutex_lock(&cluster_plug_mutex);
-		suspended = true;
-		mutex_unlock(&cluster_plug_mutex);
-
-		// put rest of the cores to sleep unconditionally!
-		for_each_online_cpu(cpu) {
-			if (cpu != 0)
-				cpu_down(cpu);
-		}
-	}
+	/* prefer little cluster when sleeping */
+	if (cluster_plug_active)
+		plug_clusters(false, true);
 }
 
 #ifdef CONFIG_POWERSUSPEND
@@ -190,21 +202,14 @@ static void __ref cluster_plug_resume(struct power_suspend *handler)
 static void __ref cluster_plug_resume(struct early_suspend *handler)
 #endif
 {
+	mutex_lock(&cluster_plug_mutex);
+	cur_hysteresis = hysteresis;
+	suspended = false;
+	mutex_unlock(&cluster_plug_mutex);
 
-	if (cluster_plug_active) {
-		int cpu;
+	if (cluster_plug_active)
+		plug_clusters(true, true);
 
-		mutex_lock(&cluster_plug_mutex);
-		cur_hysteresis = hysteresis;
-		suspended = false;
-		mutex_unlock(&cluster_plug_mutex);
-
-		for_each_possible_cpu(cpu) {
-			if (cpu == 0)
-				continue;
-			cpu_up(cpu);
-		}
-	}
 	queue_delayed_work_on(0, clusterplug_wq, &cluster_plug_work,
 		msecs_to_jiffies(10));
 }
