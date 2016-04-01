@@ -38,9 +38,7 @@ static DEFINE_MUTEX(cluster_plug_mutex);
 static struct delayed_work cluster_plug_work;
 static struct workqueue_struct *clusterplug_wq;
 
-static unsigned int cluster_plug_active = 0;
-module_param(cluster_plug_active, uint, 0664);
-
+static bool cluster_plug_active = false;
 static bool low_power_mode = false;
 
 static unsigned int hysteresis = DEF_HYSTERESIS;
@@ -145,11 +143,6 @@ static void __ref cluster_plug_work_fn(struct work_struct *work)
 	if (cluster_plug_active) {
 		unsigned int loaded_cpus;
 
-		if (unlikely(low_power_mode)) {
-			plug_clusters(false, true);
-			return;
-		}
-
 		loaded_cpus = calculate_loaded_cpus();
 #ifdef DEBUG_CLUSTER_PLUG
 		pr_info("loaded_cpus: %u\n", loaded_cpus);
@@ -164,14 +157,64 @@ static void __ref cluster_plug_work_fn(struct work_struct *work)
 			plug_clusters(true, false);
 		}
 
+		mutex_lock(&cluster_plug_mutex);
 		queue_delayed_work(clusterplug_wq, &cluster_plug_work,
 			msecs_to_jiffies(sampling_time));
-	} else {
-		/* reduce overhead when inactive */
-		queue_delayed_work(clusterplug_wq, &cluster_plug_work,
-			msecs_to_jiffies(500));
+		mutex_unlock(&cluster_plug_mutex);
 	}
 }
+
+static int __ref active_show(char *buf,
+		       const struct kernel_param *kp __attribute__ ((unused)))
+{
+	return sprintf(buf, "%d",(int)cluster_plug_active);
+}
+
+static int __ref active_store(const char *buf,
+			const struct kernel_param *kp __attribute__ ((unused)))
+{
+	int r, val;
+	bool active;
+
+	r = kstrtoint(buf, 0, &val);
+	if (r)
+		return -EINVAL;
+	active = val ? true : false;
+
+	if (active == cluster_plug_active)
+		return 0;
+
+	cluster_plug_active = active;
+
+	mutex_lock(&cluster_plug_mutex);
+	cancel_delayed_work(&cluster_plug_work);
+	flush_workqueue(clusterplug_wq);
+
+	if (active) {
+#ifdef DEBUG_CLUSTER_PLUG
+		pr_info("activating cluster_plug\n");
+#endif
+		plug_clusters(true, true);
+		queue_delayed_work(clusterplug_wq, &cluster_plug_work,
+			msecs_to_jiffies(10));
+	} else {
+#ifdef DEBUG_CLUSTER_PLUG
+		pr_info("disabling cluster_plug\n");
+#endif
+	}
+
+	mutex_unlock(&cluster_plug_mutex);
+
+	return 0;
+}
+
+static const struct kernel_param_ops param_ops_active = {
+	.set = active_store,
+	.get = active_show
+};
+
+module_param_cb(active, &param_ops_active,
+		&cluster_plug_active, 0664);
 
 static int __ref low_power_mode_show(char *buf,
 		const struct kernel_param *kp __attribute__ ((unused)))
@@ -182,15 +225,30 @@ static int __ref low_power_mode_show(char *buf,
 static int __ref low_power_mode_store(const char *buf,
 		const struct kernel_param *kp __attribute__ ((unused)))
 {
-	int r, lpm;
+	int r, lpm_i;
+	bool lpm;
 
-	r = kstrtoint(buf, 0, &lpm);
+	r = kstrtoint(buf, 0, &lpm_i);
 	if (r)
 		return -EINVAL;
+
+	lpm = lpm_i ? true : false;
+	if (low_power_mode == lpm)
+		return 0;
+
 	low_power_mode = lpm ? true : false;
 
-	/* Perform the plugging immediately */
+	mutex_lock(&cluster_plug_mutex);
+	cancel_delayed_work(&cluster_plug_work);
+	flush_workqueue(clusterplug_wq);
+
 	plug_clusters(!low_power_mode, low_power_mode);
+
+	if (!low_power_mode)
+		queue_delayed_work(clusterplug_wq, &cluster_plug_work,
+			msecs_to_jiffies(10));
+
+	mutex_unlock(&cluster_plug_mutex);
 
 	return 0;
 }
@@ -211,7 +269,7 @@ int __init cluster_plug_init(void)
 	clusterplug_wq = alloc_workqueue("clusterplug",
 				WQ_HIGHPRI | WQ_UNBOUND, 1);
 	INIT_DELAYED_WORK(&cluster_plug_work, cluster_plug_work_fn);
-	queue_delayed_work_on(0, clusterplug_wq, &cluster_plug_work,
+	queue_delayed_work(clusterplug_wq, &cluster_plug_work,
 		msecs_to_jiffies(10));
 
 	return 0;
