@@ -38,7 +38,6 @@ static struct delayed_work cluster_plug_work;
 static struct workqueue_struct *clusterplug_wq;
 
 static unsigned int cluster_plug_active = 0;
-module_param(cluster_plug_active, uint, 0664);
 
 static unsigned int hysteresis = DEF_HYSTERESIS;
 module_param(hysteresis, uint, 0664);
@@ -162,12 +161,54 @@ static void __ref cluster_plug_work_fn(struct work_struct *work)
 		}
 		queue_delayed_work(clusterplug_wq, &cluster_plug_work,
 			msecs_to_jiffies(sampling_time));
-	} else {
-		/* reduce overhead when inactive */
-		queue_delayed_work(clusterplug_wq, &cluster_plug_work,
-			msecs_to_jiffies(500));
 	}
 }
+
+static int __ref active_show(char *buf,
+		       const struct kernel_param *kp __attribute__ ((unused)))
+{
+	return sprintf(buf, "%d", cluster_plug_active);
+}
+
+static int __ref active_store(const char *buf,
+			const struct kernel_param *kp __attribute__ ((unused)))
+{
+	int r, active;
+
+	r = kstrtoint(buf, 0, &active);
+	if (r)
+		return -EINVAL;
+	active = active ? 1 : 0;
+
+	if (active == cluster_plug_active)
+		return 0;
+
+	cluster_plug_active = active;
+
+	if (active) {
+#ifdef DEBUG_CLUSTER_PLUG
+		pr_info("activating cluster_plug\n");
+#endif
+		plug_clusters(true, true);
+		queue_delayed_work_on(0, clusterplug_wq, &cluster_plug_work,
+			msecs_to_jiffies(10));
+	} else {
+#ifdef DEBUG_CLUSTER_PLUG
+		pr_info("disabling cluster_plug\n");
+#endif
+		flush_workqueue(clusterplug_wq);
+	}
+
+	return 0;
+}
+
+static const struct kernel_param_ops param_ops_active = {
+	.set = active_store,
+	.get = active_show
+};
+
+module_param_cb(cluster_plug_active, &param_ops_active,
+		&cluster_plug_active, 0664);
 
 int __init cluster_plug_init(void)
 {
