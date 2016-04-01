@@ -2,7 +2,7 @@
  * Cluster-plug CPU Hotplug Driver
  * Designed for homogeneous ARM big.LITTLE systems
  *
- * Copyright 2015 Sultan Qasim Khan
+ * Copyright (C) 2015-2016 Sultan Qasim Khan
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -26,7 +26,7 @@
 //#define DEBUG_CLUSTER_PLUG
 #undef DEBUG_CLUSTER_PLUG
 
-#define CLUSTER_PLUG_MAJOR_VERSION	1
+#define CLUSTER_PLUG_MAJOR_VERSION	2
 #define CLUSTER_PLUG_MINOR_VERSION	0
 
 #define DEF_HYSTERESIS			(10)
@@ -39,6 +39,8 @@ static struct workqueue_struct *clusterplug_wq;
 
 static unsigned int cluster_plug_active = 0;
 module_param(cluster_plug_active, uint, 0664);
+
+static bool prefer_big = true;
 
 static unsigned int hysteresis = DEF_HYSTERESIS;
 module_param(hysteresis, uint, 0664);
@@ -93,59 +95,107 @@ static unsigned int calculate_loaded_cpus(void)
 	return loaded_cpus;
 }
 
-static void __ref plug_clusters(bool enable_little)
+static void __ref plug_clusters(bool big, bool little)
 {
 	unsigned int cpu;
 	int ret;
-	bool powerhal_override = false;
+	bool no_offline = false;
 
 #ifdef DEBUG_CLUSTER_PLUG
-	if (enable_little) pr_info("enabling little cluster\n");
-	else pr_info("disabling little cluster\n");
+	pr_info("plugging big.LITTLE: %i %i\n", (int)big, (int)little);
 #endif
 
+	/* CPUs 0-3 are big, and 4-7 are little on MSM8939.
+	 * We will first online cores, then offline, to avoid situations where
+	 * the entire first cluster is offlined before we activate the second one.
+	 */
 	for_each_present_cpu(cpu) {
-		if (cpu < 4 || enable_little) {
-			if (cpu_online(cpu)) continue;
-			if (powerhal_override && cpu < 4) continue;
-			ret = cpu_up(cpu);
+		if ((cpu < 4 && big) || (cpu >= 4 && little)) {
+			if (unlikely(!cpu_online(cpu))) {
+				ret = cpu_up(cpu);
 
-			/* PowerHAL may force big cores offline */
-			if (ret == -EPERM && cpu < 4) {
-				enable_little = true;
-				powerhal_override = true;
+				/* PowerHAL or thermal throttling are interfering.
+				 * Don't offline cores to avoid a situation with
+				 * no cores online.
+				 */
+				if (ret == -EPERM)
+					no_offline = true;
 			}
-		} else {
+		}
+	}
+
+	if (unlikely(no_offline))
+		return;
+
+	for_each_online_cpu(cpu) {
+		if ((cpu < 4 && !big) || (cpu >= 4 && !little)) {
 			cpu_down(cpu);
 		}
 	}
 }
 
-static void __ref cluster_plug_work_fn(struct work_struct *work)
-{
-	unsigned int loaded_cpus, online_cpus;
+static void __ref cluster_plug_perform(void) {
+	unsigned int loaded_cpus;
 
-	if (cluster_plug_active) {
-		online_cpus = num_online_cpus();
-		loaded_cpus = calculate_loaded_cpus();
+	if (unlikely(!cluster_plug_active))
+		return;
+
+	loaded_cpus = calculate_loaded_cpus();
 #ifdef DEBUG_CLUSTER_PLUG
-		pr_info("loaded_cpus: %u\n", loaded_cpus);
+	pr_info("loaded_cpus: %u\n", loaded_cpus);
 #endif
 
-		if (loaded_cpus >= 3) {
-			cur_hysteresis = hysteresis;
-			if (online_cpus <= 4)
-				plug_clusters(true);
-		} else if (cur_hysteresis > 0) {
-			cur_hysteresis -= 1;
-		} else {
-			plug_clusters(false);
-		}
+	if (loaded_cpus >= 3) {
+		cur_hysteresis = hysteresis;
+		plug_clusters(true, true);
+	} else if (cur_hysteresis > 0) {
+		cur_hysteresis -= 1;
+	} else {
+		plug_clusters(prefer_big, !prefer_big);
 	}
-
-	queue_delayed_work(clusterplug_wq, &cluster_plug_work,
-		msecs_to_jiffies(sampling_time));
 }
+
+static void __ref cluster_plug_work_fn(struct work_struct *work)
+{
+	if (cluster_plug_active) {
+		cluster_plug_perform();
+		queue_delayed_work(clusterplug_wq, &cluster_plug_work,
+			msecs_to_jiffies(sampling_time));
+	} else {
+		/* reduce overhead when inactive */
+		queue_delayed_work(clusterplug_wq, &cluster_plug_work,
+			msecs_to_jiffies(500));
+	}
+}
+
+static int __ref prefer_big_show(char *buf,
+		       const struct kernel_param *kp __attribute__ ((unused)))
+{
+	return sprintf(buf, "%d", (int)prefer_big);
+}
+
+static int __ref prefer_big_store(const char *buf,
+			const struct kernel_param *kp __attribute__ ((unused)))
+{
+	int r, big;
+
+	r = kstrtoint(buf, 0, &big);
+	if (r)
+		return -EINVAL;
+	prefer_big = big ? true : false;
+
+	/* Perform the plugging immediately */
+	cluster_plug_perform();
+
+	return 0;
+}
+
+static const struct kernel_param_ops param_ops_prefer_big = {
+	.set = prefer_big_store,
+	.get = prefer_big_show
+};
+
+module_param_cb(prefer_big, &param_ops_prefer_big, &prefer_big, 0664);
 
 int __init cluster_plug_init(void)
 {
