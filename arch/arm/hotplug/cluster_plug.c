@@ -29,7 +29,7 @@
 #define CLUSTER_PLUG_MAJOR_VERSION	2
 #define CLUSTER_PLUG_MINOR_VERSION	0
 
-#define DEF_HYSTERESIS			(10)
+#define DEF_HYSTERESIS			(5)
 #define DEF_LOAD_THRESH			(70)
 #define DEF_SAMPLING_MS			(200)
 #define N_BIG_CPUS			(4)
