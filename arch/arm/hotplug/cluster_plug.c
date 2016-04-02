@@ -32,6 +32,7 @@
 #define DEF_HYSTERESIS			(10)
 #define DEF_LOAD_THRESH			(70)
 #define DEF_SAMPLING_MS			(200)
+#define N_BIG_CPUS			(4)
 
 static DEFINE_MUTEX(cluster_plug_mutex);
 static struct delayed_work cluster_plug_work;
@@ -58,6 +59,10 @@ struct cp_cpu_info {
 };
 
 static DEFINE_PER_CPU(struct cp_cpu_info, cp_info);
+
+static inline bool is_big(int cpu) {
+	return cpu < N_BIG_CPUS;
+}
 
 static unsigned int calculate_loaded_cpus(void)
 {
@@ -104,12 +109,11 @@ static void __ref plug_clusters(bool big, bool little)
 	pr_info("plugging big.LITTLE: %i %i\n", (int)big, (int)little);
 #endif
 
-	/* CPUs 0-3 are big, and 4-7 are little on MSM8939.
-	 * We will first online cores, then offline, to avoid situations where
+	/* We will first online cores, then offline, to avoid situations where
 	 * the entire first cluster is offlined before we activate the second one.
 	 */
 	for_each_present_cpu(cpu) {
-		if ((cpu < 4 && big) || (cpu >= 4 && little)) {
+		if ((is_big(cpu) && big) || (!is_big(cpu) && little)) {
 			if (unlikely(!cpu_online(cpu))) {
 				ret = cpu_up(cpu);
 
@@ -127,7 +131,7 @@ static void __ref plug_clusters(bool big, bool little)
 		return;
 
 	for_each_online_cpu(cpu) {
-		if ((cpu < 4 && !big) || (cpu >= 4 && !little)) {
+		if ((is_big(cpu) && !big) || (!is_big(cpu) && !little)) {
 			cpu_down(cpu);
 		}
 	}
@@ -144,7 +148,7 @@ static void __ref cluster_plug_perform(void) {
 	pr_info("loaded_cpus: %u\n", loaded_cpus);
 #endif
 
-	if (loaded_cpus >= 3) {
+	if (loaded_cpus >= N_BIG_CPUS - 1) {
 		cur_hysteresis = hysteresis;
 		plug_clusters(true, true);
 	} else if (cur_hysteresis > 0) {
