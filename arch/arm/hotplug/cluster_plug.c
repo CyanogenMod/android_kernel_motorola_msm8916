@@ -273,9 +273,6 @@ static void __ref cluster_plug_work_fn(struct work_struct *work)
 
 		cluster_plug_perform();
 		queue_clusterplug_work(sampling_time);
-	} else {
-		enable_big_cluster();
-		enable_little_cluster();
 	}
 }
 
@@ -288,7 +285,7 @@ static int __ref active_show(char *buf,
 static int __ref active_store(const char *buf,
 			const struct kernel_param *kp __attribute__ ((unused)))
 {
-	int ret, value;
+	int ret, value, cpu;
 
 	ret = kstrtoint(buf, 0, &value);
 	if (ret == 0) {
@@ -298,7 +295,17 @@ static int __ref active_store(const char *buf,
 		flush_workqueue(clusterplug_wq);
 
 		active = (value != 0);
-		queue_clusterplug_work(1);
+
+		/* make the internal state match the actual state */
+		for_each_present_cpu(cpu) {
+			if (!cpu_online(cpu))
+				cpu_up(cpu);
+		}
+		big_cluster_enabled = true;
+		little_cluster_enabled = true;
+
+		if (active)
+			queue_clusterplug_work(1);
 
 		mutex_unlock(&cluster_plug_parameters_mutex);
 	}
