@@ -29,28 +29,42 @@
 #define CLUSTER_PLUG_MAJOR_VERSION	2
 #define CLUSTER_PLUG_MINOR_VERSION	0
 
-#define DEF_HYSTERESIS			(10)
-#define DEF_LOAD_THRESH			(70)
-#define DEF_SAMPLING_MS			(200)
+#define DEF_LOAD_THRESH_UP		(80)
+#define DEF_LOAD_THRESH_DOWN		(35)
+#define DEF_SAMPLING_MS			(80)
+#define DEF_VOTE_THRESH_UP		(2)
+#define DEF_VOTE_THRESH_DOWN		(8)
+
 #define N_BIG_CPUS			(4)
+#define N_LITTLE_CPUS			(4)
 
 static DEFINE_MUTEX(cluster_plug_mutex);
 static struct delayed_work cluster_plug_work;
 static struct workqueue_struct *clusterplug_wq;
 
-static bool cluster_plug_active = false;
-static bool low_power_mode = false;
-
-static unsigned int hysteresis = DEF_HYSTERESIS;
-module_param(hysteresis, uint, 0664);
-
-static unsigned int load_threshold = DEF_LOAD_THRESH;
-module_param(load_threshold, uint, 0664);
-
 static unsigned int sampling_time = DEF_SAMPLING_MS;
 module_param(sampling_time, uint, 0664);
 
-static unsigned int cur_hysteresis = DEF_HYSTERESIS;
+static unsigned int load_threshold_up = DEF_LOAD_THRESH_UP;
+module_param(load_threshold_up, uint, 0664);
+
+static unsigned int load_threshold_down = DEF_LOAD_THRESH_DOWN;
+module_param(load_threshold_down, uint, 0664);
+
+static unsigned int vote_threshold_up = DEF_VOTE_THRESH_UP;
+module_param(vote_threshold_up, uint, 0664);
+
+static unsigned int vote_threshold_down = DEF_VOTE_THRESH_DOWN;
+module_param(vote_threshold_down, uint, 0664);
+
+static bool cluster_plug_active = false;
+static bool low_power_mode = false;
+
+static ktime_t last_action;
+
+static unsigned int vote_up = 0;
+static unsigned int vote_down = 0;
+static bool little_plugged = false;
 
 struct cp_cpu_info {
 	u64 prev_cpu_wall;
@@ -63,11 +77,12 @@ static inline bool is_big(int cpu) {
 	return cpu < N_BIG_CPUS;
 }
 
-static unsigned int calculate_loaded_cpus(void)
+static void calculate_loaded_cpus(unsigned int *loaded, unsigned int *unloaded)
 {
 	unsigned int cpu;
-	unsigned int loaded_cpus = 0;
 	struct cp_cpu_info *l_cp_info;
+	*loaded = 0;
+	*unloaded = 0;
 
 	for_each_online_cpu(cpu) {
 		u64 cur_wall_time, cur_idle_time;
@@ -91,11 +106,11 @@ static unsigned int calculate_loaded_cpus(void)
 
 		cpu_load = 100 * (wall_time - idle_time) / wall_time;
 
-		if (cpu_load > load_threshold)
-			loaded_cpus += 1;
+		if (cpu_load > load_threshold_up)
+			*loaded += 1;
+		if (cpu_load < load_threshold_down)
+			*unloaded += 1;
 	}
-
-	return loaded_cpus;
 }
 
 static void __ref plug_clusters(bool big, bool little)
@@ -140,28 +155,57 @@ static void __ref plug_clusters(bool big, bool little)
 
 static void __ref cluster_plug_work_fn(struct work_struct *work)
 {
-	if (cluster_plug_active) {
-		unsigned int loaded_cpus;
+	unsigned int loaded, unloaded;
+	ktime_t now = ktime_get();
 
-		loaded_cpus = calculate_loaded_cpus();
+	if (unlikely(!cluster_plug_active))
+		return;
+
+	calculate_loaded_cpus(&loaded, &unloaded);
 #ifdef DEBUG_CLUSTER_PLUG
-		pr_info("loaded_cpus: %u\n", loaded_cpus);
+	pr_info("loaded: %u unloaded: %u\n", loaded, unloaded);
 #endif
 
-		if (loaded_cpus >= N_BIG_CPUS - 1) {
-			cur_hysteresis = hysteresis;
-			plug_clusters(true, true);
-		} else if (cur_hysteresis > 0) {
-			cur_hysteresis -= 1;
-		} else {
-			plug_clusters(true, false);
-		}
+	if (ktime_to_ms(ktime_sub(now, last_action)) > 5*sampling_time) {
+		pr_info("cluster_plug: ignoring old ts %lld\n",
+			ktime_to_ms(ktime_sub(now, last_action)));
+		vote_up = vote_down = 0;
+	} else {
+		if (loaded >= N_BIG_CPUS - 1)
+			vote_up++;
+		else if (vote_up > 0)
+			vote_up--;
 
-		mutex_lock(&cluster_plug_mutex);
-		queue_delayed_work(clusterplug_wq, &cluster_plug_work,
-			msecs_to_jiffies(sampling_time));
-		mutex_unlock(&cluster_plug_mutex);
+		if (unloaded >= N_LITTLE_CPUS + 1)
+			vote_down++;
+		else if (vote_down > 0)
+			vote_down--;
 	}
+
+	last_action = now;
+
+	if (vote_up > vote_threshold_up) {
+		little_plugged = true;
+		vote_up = vote_threshold_up;
+		vote_down = 0;
+	} else if (!vote_up && vote_down > vote_threshold_down) {
+		little_plugged = false;
+		vote_down = vote_threshold_down;
+	}
+
+	/* Always try to plug. In some cases, other things (such as thermal core
+	 * control and some battery saving things) may take down big cores. When
+	 * this happens, we want to try to activate all cores so that the user
+	 * is not starved of power. If there is a real thermal issue, the thermal
+	 * core control will take down our additional cores and block us from
+	 * bringing them back up, so it's safe to do so.
+	 */
+	plug_clusters(true, little_plugged);
+
+	mutex_lock(&cluster_plug_mutex);
+	queue_delayed_work(clusterplug_wq, &cluster_plug_work,
+		msecs_to_jiffies(sampling_time));
+	mutex_unlock(&cluster_plug_mutex);
 }
 
 static int __ref active_show(char *buf,
