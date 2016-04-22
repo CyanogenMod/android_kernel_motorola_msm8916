@@ -3,7 +3,7 @@
 
 RDIR=$(pwd)
 
-TOOLCHAIN=$HOME/toolchain
+TOOLCHAIN=~/toolchain
 
 THREADS=5
 
@@ -12,7 +12,7 @@ THREADS=5
 VER=$(cat "$RDIR/VERSION")
 
 export ARCH=arm
-export CROSS_COMPILE=$TOOLCHAIN/bin/arm-linux-androideabi-
+export CROSS_COMPILE=$TOOLCHAIN/bin/arm-linux-gnueabihf-
 
 cd "$RDIR"
 
