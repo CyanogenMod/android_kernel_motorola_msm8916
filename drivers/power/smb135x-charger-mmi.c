@@ -791,6 +791,7 @@ static enum power_supply_property smb135x_battery_properties[] = {
 	POWER_SUPPLY_PROP_SYSTEM_TEMP_LEVEL,
 	POWER_SUPPLY_PROP_NUM_SYSTEM_TEMP_LEVELS,
 	POWER_SUPPLY_PROP_CHARGE_RATE,
+	POWER_SUPPLY_PROP_CURRENT_MAX,
 	/* Block from Fuel Gauge */
 	POWER_SUPPLY_PROP_CYCLE_COUNT,
 	POWER_SUPPLY_PROP_VOLTAGE_MAX,
@@ -2106,6 +2107,22 @@ static int smb135x_battery_get_property(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_RATE:
 		val->intval = chip->charger_rate;
+		break;
+	case POWER_SUPPLY_PROP_CURRENT_MAX:
+		switch (chip->charger_rate) {
+		case POWER_SUPPLY_CHARGE_RATE_NONE:
+			val->intval = 0;
+			break;
+		case POWER_SUPPLY_CHARGE_RATE_NORMAL:
+			val->intval = 1100000;
+			break;
+		case POWER_SUPPLY_CHARGE_RATE_WEAK:
+			val->intval = 500000;
+			break;
+		case POWER_SUPPLY_CHARGE_RATE_TURBO:
+			val->intval = 2500000;
+			break;
+		}
 		break;
 	/* Block from Fuel Gauge */
 	case POWER_SUPPLY_PROP_TEMP:
