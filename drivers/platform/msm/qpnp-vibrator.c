@@ -67,7 +67,7 @@ struct qpnp_vib {
 	int vtg_min;
 	int vtg_max;
 	int vtg_level;
-	int vtg_level_default;
+	int vtg_default;
 	int vtg_level_normal;
 	int vtg_level_haptic;
 	int timeout;
@@ -98,7 +98,7 @@ static ssize_t qpnp_vib_max_show(struct device *dev,
 	return scnprintf(buf, PAGE_SIZE, "%d\n", vib->vtg_max);
 }
 
-static ssize_t qpnp_vib_level_default_show(struct device *dev,
+static ssize_t qpnp_vib_default_show(struct device *dev,
 					struct device_attribute *attr,
 					char *buf)
 {
@@ -106,7 +106,7 @@ static ssize_t qpnp_vib_level_default_show(struct device *dev,
 	struct qpnp_vib *vib = container_of(tdev, struct qpnp_vib,
 					timed_dev);
 
-	return scnprintf(buf, PAGE_SIZE, "%d\n", vib->vtg_level_default);
+	return scnprintf(buf, PAGE_SIZE, "%d\n", vib->vtg_default);
 }
 
 static ssize_t qpnp_vib_level_show(struct device *dev,
@@ -151,7 +151,7 @@ static ssize_t qpnp_vib_level_store(struct device *dev,
 }
 
 static DEVICE_ATTR(vtg_level, S_IRUGO | S_IWUSR, qpnp_vib_level_show, qpnp_vib_level_store);
-static DEVICE_ATTR(vtg_level_default, S_IRUGO, qpnp_vib_level_default_show, NULL);
+static DEVICE_ATTR(vtg_default, S_IRUGO, qpnp_vib_default_show, NULL);
 static DEVICE_ATTR(vtg_min, S_IRUGO, qpnp_vib_min_show, NULL);
 static DEVICE_ATTR(vtg_max, S_IRUGO, qpnp_vib_max_show, NULL);
 
@@ -351,11 +351,11 @@ static int qpnp_vib_parse_dt(struct qpnp_vib *vib)
 		return rc;
 	}
 
-	vib->vtg_level_default = QPNP_VIB_DEFAULT_VTG_LVL;
+	vib->vtg_default = QPNP_VIB_DEFAULT_VTG_LVL;
 	rc = of_property_read_u32(spmi->dev.of_node,
 			"qcom,vib-vtg-level-mV", &temp_val);
 	if (!rc) {
-		vib->vtg_level_default = temp_val;
+		vib->vtg_default = temp_val;
 	} else if (rc != -EINVAL) {
 		dev_err(&spmi->dev, "Unable to read vtg level\n");
 		return rc;
@@ -381,8 +381,8 @@ static int qpnp_vib_parse_dt(struct qpnp_vib *vib)
 		return rc;
 	}
 
-	vib->vtg_level_default /= 100;
-	vib->vtg_level_normal = vib->vtg_level_default;
+	vib->vtg_default /= 100;
+	vib->vtg_level_normal = vib->vtg_default;
 	vib->vtg_level = vib->vtg_level_normal;
 	vib->vtg_level_haptic = vib->vtg_level_normal;
 	vib->vtg_min /= 100;
@@ -507,7 +507,7 @@ static int qpnp_vibrator_probe(struct spmi_device *spmi)
 		return rc;
 
         device_create_file(vib->timed_dev.dev, &dev_attr_vtg_level);
-        device_create_file(vib->timed_dev.dev, &dev_attr_vtg_level_default);
+        device_create_file(vib->timed_dev.dev, &dev_attr_vtg_default);
         device_create_file(vib->timed_dev.dev, &dev_attr_vtg_min);
         device_create_file(vib->timed_dev.dev, &dev_attr_vtg_max);
 
