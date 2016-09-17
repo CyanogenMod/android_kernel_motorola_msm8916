@@ -551,8 +551,6 @@ v_U32_t sapweightRssiCount(v_S7_t rssi, v_U16_t count)
 
     if(countWeight > SOFTAP_COUNT_WEIGHT)
         countWeight = SOFTAP_COUNT_WEIGHT;
-    else if (countWeight < 0)
-        countWeight = 0;
 
     rssicountWeight =  rssiWeight + countWeight;      
 
@@ -1352,7 +1350,7 @@ void sapComputeSpectWeight( tSapChSelSpectInfo* pSpectInfoParams,
     if ( NULL == pBeaconStruct )
     {
         VOS_TRACE(VOS_MODULE_ID_SAP, VOS_TRACE_LEVEL_INFO_HIGH,
-                   "Unable to allocate memory in sapComputeSpectWeight\n");
+                   "Unable to allocate memory in sapComputeSpectWeight");
         return;
     }
     VOS_TRACE( VOS_MODULE_ID_SAP, VOS_TRACE_LEVEL_INFO_HIGH, "In %s, Computing spectral weight", __func__);
@@ -1630,7 +1628,7 @@ void sapComputeSpectWeight( tSapChSelSpectInfo* pSpectInfoParams,
                 }
 
                 VOS_TRACE(VOS_MODULE_ID_SAP, VOS_TRACE_LEVEL_INFO_HIGH,
-                   "In %s, bssdes.ch_self=%d, bssdes.ch_ID=%d, bssdes.rssi=%d, SpectCh.bssCount=%d, pScanResult=%p, ChannelWidth %d, secondaryChanOffset %d, center frequency %d \n",
+                   "In %s, bssdes.ch_self=%d, bssdes.ch_ID=%d, bssdes.rssi=%d, SpectCh.bssCount=%d, pScanResult=%p, ChannelWidth %d, secondaryChanOffset %d, center frequency %d ",
                   __func__, pScanResult->BssDescriptor.channelIdSelf, pScanResult->BssDescriptor.channelId, pScanResult->BssDescriptor.rssi, pSpectCh->bssCount, pScanResult,pSpectCh->channelWidth,secondaryChannelOffset,centerFreq);
                  pSpectCh++;
                  break;
@@ -2126,9 +2124,11 @@ eChannelWidthInfo sapGetChannelWidthInfo(tHalHandle halHandle, ptSapContext pSap
     v_U32_t cbMode;
     eChannelWidthInfo chWidth = CHWIDTH_HT20;
 
+#ifdef WLAN_FEATURE_AP_HT40_24G
     if (eSAP_RF_SUBBAND_2_4_GHZ == operatingBand)
         cbMode = sme_GetChannelBondingMode24G(halHandle);
     else
+#endif
         cbMode = sme_GetChannelBondingMode5G(halHandle);
 
     if (phyMode == eSAP_DOT11_MODE_11n ||
@@ -2186,13 +2186,6 @@ v_U8_t sapSelectChannel(tHalHandle halHandle, ptSapContext pSapCtx,  tScanResult
     eChannelWidthInfo chWidth;
 #endif
     VOS_TRACE(VOS_MODULE_ID_SAP, VOS_TRACE_LEVEL_INFO_HIGH, "In %s, Running SAP Ch Select", __func__);
-
-    if (NULL == pScanResult)
-    {
-        //scan is successfull, but no AP is present, select the first channel is channel range
-        ccmCfgGetInt( halHandle, WNI_CFG_SAP_CHANNEL_SELECT_START_CHANNEL, &startChannelNum);
-        return startChannelNum;
-    }
 
     // Initialize the structure pointed by pSpectInfoParams
     if(sapChanSelInit( halHandle, pSpectInfoParams) != eSAP_TRUE ) {

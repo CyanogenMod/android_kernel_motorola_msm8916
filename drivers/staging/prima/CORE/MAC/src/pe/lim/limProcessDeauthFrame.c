@@ -142,8 +142,6 @@ limProcessDeauthFrame(tpAniSirGlobal pMac, tANI_U8 *pRxPacketInfo, tpPESession p
         limMlmStateStr(psessionEntry->limMlmState), psessionEntry->limSmeState,
         psessionEntry->limSystemRole, reasonCode,
         MAC_ADDR_ARRAY(pHdr->sa));)
-
-    PELOGE(limLog(pMac, LOGE,FL(" Deauth frame rssi = %d"), (uint)abs((tANI_S8)WDA_GET_RX_RSSI_DB(pRxPacketInfo)));)
       
     if (limCheckDisassocDeauthAckPending(pMac, (tANI_U8*)pHdr->sa))
     {
@@ -266,8 +264,8 @@ limProcessDeauthFrame(tpAniSirGlobal pMac, tANI_U8 *pRxPacketInfo, tpPESession p
             MAC_ADDR_ARRAY(pHdr->sa));)
             if (limSearchPreAuthList(pMac, pHdr->sa))
             {
-                PELOG1(limLog(pMac, LOG1, FL("Preauth entry exist. "
-                "Deleting... "));)
+                limLog(pMac, LOG1, FL("Preauth entry exist. "
+                "Deleting... "));
                 limDeletePreAuthNode(pMac, pHdr->sa);
             }
             return;
@@ -291,11 +289,11 @@ limProcessDeauthFrame(tpAniSirGlobal pMac, tANI_U8 *pRxPacketInfo, tpPESession p
                          */
 
                         // Log error
-                        PELOG1(limLog(pMac, LOG1,
+                        limLog(pMac, LOG1,
                            FL("received Deauth frame state %d with failure "
                            "code %d from "MAC_ADDRESS_STR),
                            psessionEntry->limMlmState, reasonCode,
-                           MAC_ADDR_ARRAY(pHdr->sa));)
+                           MAC_ADDR_ARRAY(pHdr->sa));
 
                         limRestoreFromAuthState(pMac, eSIR_SME_DEAUTH_WHILE_JOIN,
                                                 reasonCode,psessionEntry);
@@ -457,8 +455,7 @@ limProcessDeauthFrame(tpAniSirGlobal pMac, tANI_U8 *pRxPacketInfo, tpPESession p
     }
 
     if ((pStaDs->mlmStaContext.mlmState == eLIM_MLM_WT_DEL_STA_RSP_STATE) ||
-        (pStaDs->mlmStaContext.mlmState == eLIM_MLM_WT_DEL_BSS_RSP_STATE) ||
-        (pStaDs->isDisassocDeauthInProgress))
+        (pStaDs->mlmStaContext.mlmState == eLIM_MLM_WT_DEL_BSS_RSP_STATE))
     {
         /**
          * Already in the process of deleting context for the peer
@@ -471,7 +468,6 @@ limProcessDeauthFrame(tpAniSirGlobal pMac, tANI_U8 *pRxPacketInfo, tpPESession p
            pStaDs->isDisassocDeauthInProgress);)
         return;
     } 
-    pStaDs->isDisassocDeauthInProgress++;
     pStaDs->mlmStaContext.disassocReason = (tSirMacReasonCodes)reasonCode;
     pStaDs->mlmStaContext.cleanupTrigger = eLIM_PEER_ENTITY_DEAUTH;
 

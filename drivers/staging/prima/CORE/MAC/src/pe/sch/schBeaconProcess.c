@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -202,7 +202,8 @@ ap_beacon_process(
                   //then we need to enable protection from 11g station. 
                   //we don't need protection from 11b because if that's needed then our operating
                   //mode would have already been set to legacy in the previous blocks.
-                  if(eSIR_HT_OP_MODE_OVERLAP_LEGACY == pBcnStruct->HTInfo.opMode)
+                  if(eSIR_HT_OP_MODE_OVERLAP_LEGACY == pBcnStruct->HTInfo.opMode
+                     && !pMac->roam.configParam.ignorePeerHTopMode)
                   {
                       if((eSIR_HT_OP_MODE_MIXED != pMac->lim.gHTOperMode) &&
                           (eSIR_HT_OP_MODE_OVERLAP_LEGACY != pMac->lim.gHTOperMode))
@@ -336,7 +337,7 @@ static void __schBeaconProcessForSession( tpAniSirGlobal      pMac,
     tUpdateBeaconParams beaconParams;
     tANI_U8 sendProbeReq = FALSE;
     tpDphHashNode pStaDs = NULL;
-    tANI_U32   channelBondingMode;
+    tANI_U32   channelBondingMode = 0;
 #ifdef WLAN_FEATURE_11AC
     tpSirMacMgmtHdr    pMh = WDA_GET_RX_MAC_HEADER(pRxPacketInfo);
     tANI_U16  aid;
@@ -407,8 +408,8 @@ static void __schBeaconProcessForSession( tpAniSirGlobal      pMac,
         bi = psessionEntry->beaconParams.beaconInterval;
         if (bi != pBeacon->beaconInterval)
         {
-           PELOG1(schLog(pMac, LOG1, FL("Beacon interval changed from %d to %d"),
-                   pBeacon->beaconInterval, bi);)
+           schLog(pMac, LOG1, FL("Beacon interval changed from %d to %d"),
+                   pBeacon->beaconInterval, bi);
 
             bi = pBeacon->beaconInterval;
             psessionEntry->beaconParams.beaconInterval = (tANI_U16) bi;
@@ -492,7 +493,7 @@ static void __schBeaconProcessForSession( tpAniSirGlobal      pMac,
         /* Update the channel bonding mode only if channel bonding
          * mode is enabled in INI.
          */
-        if ( (pStaDs != NULL) &&
+        if ( (pStaDs != NULL) && (HAL_STA_INVALID_IDX != pStaDs->staIndex ) &&
               (WNI_CFG_CHANNEL_BONDING_MODE_DISABLE != channelBondingMode) )
         {
            /* Following check is related to HT40 on 2.4GHz mode*/
@@ -517,6 +518,8 @@ static void __schBeaconProcessForSession( tpAniSirGlobal      pMac,
                              pBeacon->HTInfo.recommendedTxWidthSet;
                   pStaDs->htSecondaryChannelOffset =
                              pBeacon->HTInfo.secondaryChannelOffset;
+                  limUpdateMaxRateFlag(pMac, psessionEntry->smeSessionId,
+                                       limGetMaxRateFlags(pStaDs, psessionEntry));
               }
            }
         }
@@ -537,7 +540,7 @@ static void __schBeaconProcessForSession( tpAniSirGlobal      pMac,
        /* Update the channel bonding mode only if channel bonding
         * mode is enabled in INI.
         */
-       if ( (NULL != pStaDs)  &&
+       if ( (NULL != pStaDs) && (HAL_STA_INVALID_IDX != pStaDs->staIndex ) &&
             (WNI_CFG_CHANNEL_BONDING_MODE_DISABLE != channelBondingMode) )
        {
           if (psessionEntry->vhtCapability && pBeacon->OperatingMode.present )
@@ -548,30 +551,25 @@ static void __schBeaconProcessForSession( tpAniSirGlobal      pMac,
                 eHT_CHANNEL_WIDTH_40MHZ: eHT_CHANNEL_WIDTH_20MHZ;
              if (operMode != pBeacon->OperatingMode.chanWidth)
              {
-                PELOG1(schLog(pMac, LOG1,
+                   schLog(pMac, LOG1,
                          FL(" received OpMode Chanwidth %d, staIdx = %d"),
                          pBeacon->OperatingMode.chanWidth,
-                         pStaDs->staIndex);)
-                   PELOG1(schLog(pMac, LOG1, FL(" MAC - %0x:%0x:%0x:%0x:%0x:%0x"),
-                            pMh->sa[0],
-                            pMh->sa[1],
-                            pMh->sa[2],
-                            pMh->sa[3],
-                            pMh->sa[4],
-                            pMh->sa[5]);)
+                         pStaDs->staIndex);
+                   schLog(pMac, LOG1, FL(" MAC -" MAC_ADDRESS_STR),
+                                              MAC_ADDR_ARRAY(pMh->sa));
 
                    if (pBeacon->OperatingMode.chanWidth == eHT_CHANNEL_WIDTH_80MHZ)
                    {
-                      PELOG1(schLog(pMac, LOG1,
-                               FL("Updating the CH Width to 80MHz"));)
+                      schLog(pMac, LOG1,
+                               FL("Updating the CH Width to 80MHz"));
                          pStaDs->vhtSupportedChannelWidthSet =
                          WNI_CFG_VHT_CHANNEL_WIDTH_80MHZ;
                       pStaDs->htSupportedChannelWidthSet = eHT_CHANNEL_WIDTH_40MHZ;
                    }
                    else if (pBeacon->OperatingMode.chanWidth == eHT_CHANNEL_WIDTH_40MHZ)
                    {
-                      PELOG1(schLog(pMac, LOG1,
-                               FL("Updating the CH Width to 40MHz"));)
+                      schLog(pMac, LOG1,
+                               FL("Updating the CH Width to 40MHz"));
                          pStaDs->vhtSupportedChannelWidthSet =
                          WNI_CFG_VHT_CHANNEL_WIDTH_20_40MHZ;
                       pStaDs->htSupportedChannelWidthSet = eHT_CHANNEL_WIDTH_40MHZ;
@@ -579,8 +577,8 @@ static void __schBeaconProcessForSession( tpAniSirGlobal      pMac,
                    else if (pBeacon->OperatingMode.chanWidth ==
                          eHT_CHANNEL_WIDTH_20MHZ)
                    {
-                      PELOG1(schLog(pMac, LOG1,
-                               FL("Updating the CH Width to 20MHz"));)
+                      schLog(pMac, LOG1,
+                               FL("Updating the CH Width to 20MHz"));
                          pStaDs->vhtSupportedChannelWidthSet =
                          WNI_CFG_VHT_CHANNEL_WIDTH_20_40MHZ;
                       pStaDs->htSupportedChannelWidthSet = eHT_CHANNEL_WIDTH_20MHZ;
@@ -595,23 +593,18 @@ static void __schBeaconProcessForSession( tpAniSirGlobal      pMac,
              operMode = pStaDs->vhtSupportedChannelWidthSet;
              if (operMode != pBeacon->VHTOperation.chanWidth)
              {
-                PELOG1(schLog(pMac, LOG1,
+                   schLog(pMac, LOG1,
                          FL(" received VHTOP CHWidth %d staIdx = %d"),
                          pBeacon->VHTOperation.chanWidth,
-                         pStaDs->staIndex);)
-                   PELOG1(schLog(pMac, LOG1, FL(" MAC - %0x:%0x:%0x:%0x:%0x:%0x"),
-                            pMh->sa[0],
-                            pMh->sa[1],
-                            pMh->sa[2],
-                            pMh->sa[3],
-                            pMh->sa[4],
-                            pMh->sa[5]);)
+                         pStaDs->staIndex);
+                   schLog(pMac, LOG1, FL(" MAC -" MAC_ADDRESS_STR),
+                                            MAC_ADDR_ARRAY(pMh->sa));
 
                    if (pBeacon->VHTOperation.chanWidth ==
                          WNI_CFG_VHT_CHANNEL_WIDTH_80MHZ)
                    {
-                      PELOG1(schLog(pMac, LOG1,
-                               FL("Updating the CH Width to 80MHz"));)
+                      schLog(pMac, LOG1,
+                               FL("Updating the CH Width to 80MHz"));
                          pStaDs->vhtSupportedChannelWidthSet =
                          WNI_CFG_VHT_CHANNEL_WIDTH_80MHZ;
                       pStaDs->htSupportedChannelWidthSet = eHT_CHANNEL_WIDTH_40MHZ;
@@ -624,16 +617,16 @@ static void __schBeaconProcessForSession( tpAniSirGlobal      pMac,
                          WNI_CFG_VHT_CHANNEL_WIDTH_20_40MHZ;
                       if (pBeacon->HTCaps.supportedChannelWidthSet)
                       {
-                         PELOG1(schLog(pMac, LOG1,
-                                  FL("Updating the CH Width to 40MHz"));)
+                         schLog(pMac, LOG1,
+                                  FL("Updating the CH Width to 40MHz"));
                             pStaDs->htSupportedChannelWidthSet =
                             eHT_CHANNEL_WIDTH_40MHZ;
                          chWidth = eHT_CHANNEL_WIDTH_40MHZ;
                       }
                       else
                       {
-                         PELOG1(schLog(pMac, LOG1,
-                                  FL("Updating the CH Width to 20MHz"));)
+                         schLog(pMac, LOG1,
+                                  FL("Updating the CH Width to 20MHz"));
                             pStaDs->htSupportedChannelWidthSet =
                             eHT_CHANNEL_WIDTH_20MHZ;
                          chWidth = eHT_CHANNEL_WIDTH_20MHZ;
@@ -651,7 +644,6 @@ static void __schBeaconProcessForSession( tpAniSirGlobal      pMac,
     /* Obtain the Max Tx power for the current regulatory  */
     regMax = cfgGetRegulatoryMaxTransmitPower( pMac, psessionEntry->currentOperChannel );
 #endif
-
 #if defined WLAN_FEATURE_VOWIFI
     {
         tPowerdBm  localRRMConstraint = 0;
@@ -709,8 +701,8 @@ static void __schBeaconProcessForSession( tpAniSirGlobal      pMac,
 
     if(beaconParams.paramChangeBitmap)
     {
-        PELOGW(schLog(pMac, LOGW, FL("Beacon for session[%d] got changed. "), psessionEntry->peSessionId);)
-        PELOGW(schLog(pMac, LOGW, FL("sending beacon param change bitmap: 0x%x "), beaconParams.paramChangeBitmap);)
+        schLog(pMac, LOGW, FL("Beacon for session[%d] got changed. "), psessionEntry->peSessionId);
+        schLog(pMac, LOGW, FL("sending beacon param change bitmap: 0x%x "), beaconParams.paramChangeBitmap);
         limSendBeaconParams(pMac, &beaconParams, psessionEntry);
     }
 
@@ -756,7 +748,6 @@ void schBeaconProcess(tpAniSirGlobal pMac, tANI_U8* pRxPacketInfo, tpPESession p
 
         return;
     }
-
     if (beaconStruct.ssidPresent)
     {
         beaconStruct.ssId.ssId[beaconStruct.ssId.length] = 0;
@@ -788,8 +779,10 @@ void schBeaconProcess(tpAniSirGlobal pMac, tANI_U8* pRxPacketInfo, tpPESession p
         {
             //Update the beacons and apply the new settings to HAL
             schSetFixedBeaconFields(pMac, pAPSession);
-            PELOG1(schLog(pMac, LOG1, FL("Beacon for PE session[%d] got changed.  "), pAPSession->peSessionId);)
-            PELOG1(schLog(pMac, LOG1, FL("sending beacon param change bitmap: 0x%x "), beaconParams.paramChangeBitmap);)
+            schLog(pMac, LOG1, FL("Beacon for PE session[%d] got changed."),
+                                                      pAPSession->peSessionId);
+            schLog(pMac, LOG1, FL("sending beacon param change bitmap: 0x%x "),
+                                               beaconParams.paramChangeBitmap);
             limSendBeaconParams(pMac, &beaconParams, pAPSession);
         }
     }
@@ -836,14 +829,43 @@ tSirRetStatus schBeaconEdcaProcess(tpAniSirGlobal pMac, tSirMacEdcaParamSetIE *e
     vos_log_qos_edca_pkt_type *log_ptr = NULL;
 #endif //FEATURE_WLAN_DIAG_SUPPORT 
 
-    PELOG1(schLog(pMac, LOG1, FL("Updating parameter set count: Old %d ---> new %d"),
-           psessionEntry->gLimEdcaParamSetCount, edca->qosInfo.count);)
+    schLog(pMac, LOG2, FL("Updating parameter set count: Old %d ---> new %d"),
+           psessionEntry->gLimEdcaParamSetCount, edca->qosInfo.count);
 
     psessionEntry->gLimEdcaParamSetCount = edca->qosInfo.count;
     psessionEntry->gLimEdcaParams[EDCA_AC_BE] = edca->acbe;
     psessionEntry->gLimEdcaParams[EDCA_AC_BK] = edca->acbk;
     psessionEntry->gLimEdcaParams[EDCA_AC_VI] = edca->acvi;
     psessionEntry->gLimEdcaParams[EDCA_AC_VO] = edca->acvo;
+
+    if (pMac->roam.configParam.enable_edca_params) {
+        psessionEntry->gLimEdcaParams[EDCA_AC_VO].aci.aifsn =
+               pMac->roam.configParam.edca_vo_aifs;
+        psessionEntry->gLimEdcaParams[EDCA_AC_VI].aci.aifsn =
+               pMac->roam.configParam.edca_vi_aifs;
+        psessionEntry->gLimEdcaParams[EDCA_AC_BK].aci.aifsn =
+               pMac->roam.configParam.edca_bk_aifs;
+        psessionEntry->gLimEdcaParams[EDCA_AC_BE].aci.aifsn =
+               pMac->roam.configParam.edca_be_aifs;
+
+        psessionEntry->gLimEdcaParams[EDCA_AC_VO].cw.min =
+               pMac->roam.configParam.edca_vo_cwmin;
+        psessionEntry->gLimEdcaParams[EDCA_AC_VI].cw.min =
+               pMac->roam.configParam.edca_vi_cwmin;
+        psessionEntry->gLimEdcaParams[EDCA_AC_BK].cw.min =
+               pMac->roam.configParam.edca_bk_cwmin;
+        psessionEntry->gLimEdcaParams[EDCA_AC_BE].cw.min =
+               pMac->roam.configParam.edca_be_cwmin;
+
+        psessionEntry->gLimEdcaParams[EDCA_AC_VO].cw.max =
+               pMac->roam.configParam.edca_vo_cwmax;
+        psessionEntry->gLimEdcaParams[EDCA_AC_VI].cw.max =
+               pMac->roam.configParam.edca_vi_cwmax;
+        psessionEntry->gLimEdcaParams[EDCA_AC_BK].cw.max =
+               pMac->roam.configParam.edca_bk_cwmax;
+        psessionEntry->gLimEdcaParams[EDCA_AC_BE].cw.max =
+               pMac->roam.configParam.edca_be_cwmax;
+    }
 //log: LOG_WLAN_QOS_EDCA_C
 #ifdef FEATURE_WLAN_DIAG_SUPPORT
     WLAN_VOS_DIAG_LOG_ALLOC(log_ptr, vos_log_qos_edca_pkt_type, LOG_WLAN_QOS_EDCA_C);
@@ -868,16 +890,18 @@ tSirRetStatus schBeaconEdcaProcess(tpAniSirGlobal pMac, tSirMacEdcaParamSetIE *e
     }
     WLAN_VOS_DIAG_LOG_REPORT(log_ptr);
 #endif //FEATURE_WLAN_DIAG_SUPPORT
-    PELOG1(schLog(pMac, LOGE, FL("Updating Local EDCA Params(gLimEdcaParams) to: "));)
+    schLog(pMac, LOG1,
+           FL("edsa param enabled in ini %d. Updating Local EDCA Params(gLimEdcaParams) to: "),
+           pMac->roam.configParam.enable_edca_params);
     for(i=0; i<MAX_NUM_AC; i++)
     {
-        PELOG1(schLog(pMac, LOG1, FL("AC[%d]:  AIFSN: %d, ACM %d, CWmin %d, CWmax %d, TxOp %d"),
+        schLog(pMac, LOG1, FL("AC[%d]:  AIFSN: %d, ACM %d, CWmin %d, CWmax %d, TxOp %d"),
             i,
             psessionEntry->gLimEdcaParams[i].aci.aifsn, 
             psessionEntry->gLimEdcaParams[i].aci.acm,
             psessionEntry->gLimEdcaParams[i].cw.min,
             psessionEntry->gLimEdcaParams[i].cw.max,
-            psessionEntry->gLimEdcaParams[i].txoplimit);)
+            psessionEntry->gLimEdcaParams[i].txoplimit);
     }
 
     return eSIR_SUCCESS;

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -61,6 +61,8 @@ typedef enum
 #define LIM_MAX_REASSOC_RETRY_LIMIT            2
 #endif
 
+#define LIM_MAX_BANDS ( 48 )
+
 // classifier ID is coded as 0-3: tsid, 4-5:direction
 #define LIM_MAKE_CLSID(tsid, dir) (((tsid) & 0x0F) | (((dir) & 0x03) << 4))
 
@@ -103,6 +105,7 @@ typedef enum offset {
     BW20,
     BW40PLUS,
     BW40MINUS,
+    BW80,
     BWALL
 } offset_t;
 
@@ -110,9 +113,10 @@ typedef struct op_class_map {
     tANI_U8 op_class;
     tANI_U8 ch_spacing;
     offset_t    offset;
-    tANI_U8 channels[15];
+    tANI_U8 channels[25];
 }op_class_map_t;
 // LIM utility functions
+tANI_BOOLEAN limCheck11BRateBitmap(tANI_U16 RateBitmap);
 void limGetBssidFromPkt(tpAniSirGlobal, tANI_U8 *, tANI_U8 *, tANI_U32 *);
 char * limMlmStateStr(tLimMlmStates state);
 char * limSmeStateStr(tLimSmeStates state);
@@ -435,7 +439,7 @@ typedef enum
     WLAN_PE_DIAG_REASSOC_REQ_EVENT,
     WLAN_PE_DIAG_REASSOC_RSP_EVENT,
     WLAN_PE_DIAG_AUTH_REQ_EVENT,
-    WLAN_PE_DIAG_AUTH_RSP_EVENT,
+    WLAN_PE_DIAG_AUTH_RSP_EVENT = 10,
     WLAN_PE_DIAG_DISASSOC_REQ_EVENT,
     WLAN_PE_DIAG_DISASSOC_RSP_EVENT,
     WLAN_PE_DIAG_DISASSOC_IND_EVENT,
@@ -445,7 +449,7 @@ typedef enum
     WLAN_PE_DIAG_DEAUTH_IND_EVENT,
     WLAN_PE_DIAG_START_BSS_REQ_EVENT,
     WLAN_PE_DIAG_START_BSS_RSP_EVENT,
-    WLAN_PE_DIAG_AUTH_IND_EVENT,
+    WLAN_PE_DIAG_AUTH_IND_EVENT = 20,
     WLAN_PE_DIAG_ASSOC_IND_EVENT,
     WLAN_PE_DIAG_ASSOC_CNF_EVENT,
     WLAN_PE_DIAG_REASSOC_IND_EVENT,
@@ -455,7 +459,7 @@ typedef enum
     WLAN_PE_DIAG_STOP_BSS_RSP_EVENT,
     WLAN_PE_DIAG_DEAUTH_CNF_EVENT,
     WLAN_PE_DIAG_ADDTS_REQ_EVENT,
-    WLAN_PE_DIAG_ADDTS_RSP_EVENT,
+    WLAN_PE_DIAG_ADDTS_RSP_EVENT = 30,
     WLAN_PE_DIAG_DELTS_REQ_EVENT,
     WLAN_PE_DIAG_DELTS_RSP_EVENT,
     WLAN_PE_DIAG_DELTS_IND_EVENT,
@@ -465,7 +469,7 @@ typedef enum
     WLAN_PE_DIAG_EXIT_BMPS_RSP_EVENT,
     WLAN_PE_DIAG_EXIT_BMPS_IND_EVENT,
     WLAN_PE_DIAG_ENTER_IMPS_REQ_EVENT,
-    WLAN_PE_DIAG_ENTER_IMPS_RSP_EVENT,
+    WLAN_PE_DIAG_ENTER_IMPS_RSP_EVENT = 40,
     WLAN_PE_DIAG_EXIT_IMPS_REQ_EVENT,
     WLAN_PE_DIAG_EXIT_IMPS_RSP_EVENT,
     WLAN_PE_DIAG_ENTER_UAPSD_REQ_EVENT,
@@ -475,7 +479,7 @@ typedef enum
     WLAN_PE_DIAG_WOWL_ADD_BCAST_PTRN_EVENT,
     WLAN_PE_DIAG_WOWL_DEL_BCAST_PTRN_EVENT,
     WLAN_PE_DIAG_ENTER_WOWL_REQ_EVENT,
-    WLAN_PE_DIAG_ENTER_WOWL_RSP_EVENT,
+    WLAN_PE_DIAG_ENTER_WOWL_RSP_EVENT = 50,
     WLAN_PE_DIAG_EXIT_WOWL_REQ_EVENT,
     WLAN_PE_DIAG_EXIT_WOWL_RSP_EVENT,
     WLAN_PE_DIAG_HAL_ADDBA_REQ_EVENT,
@@ -485,8 +489,23 @@ typedef enum
     WLAN_PE_DIAG_PRE_AUTH_REQ_EVENT,
     WLAN_PE_DIAG_PRE_AUTH_RSP_EVENT,
     WLAN_PE_DIAG_PREAUTH_DONE,
-    WLAN_PE_DIAG_REASSOCIATING,
+    WLAN_PE_DIAG_REASSOCIATING = 60,
     WLAN_PE_DIAG_CONNECTED,
+    WLAN_PE_DIAG_ASSOC_REQ_EVENT,
+    WLAN_PE_DIAG_AUTH_COMP_EVENT,
+    WLAN_PE_DIAG_ASSOC_COMP_EVENT,
+    WLAN_PE_DIAG_AUTH_START_EVENT,
+    WLAN_PE_DIAG_ASSOC_START_EVENT,
+    WLAN_PE_DIAG_REASSOC_START_EVENT,
+    WLAN_PE_DIAG_ROAM_AUTH_START_EVENT,
+    WLAN_PE_DIAG_ROAM_AUTH_COMP_EVENT,
+    WLAN_PE_DIAG_ROAM_ASSOC_START_EVENT = 70,
+    WLAN_PE_DIAG_ROAM_ASSOC_COMP_EVENT,
+    WLAN_PE_DIAG_SCAN_COMP_EVENT,
+    WLAN_PE_DIAG_SCAN_RES_FOUND_EVENT,
+    WLAN_PE_DIAG_ROAM_REQUESTED,
+    WLAN_PE_DIAG_CHANNEL_SWITCH_ANOUNCEMENT,
+    WLAN_PE_DIAG_ROAM_CANDIDATE_FOUND,
 }WLAN_PE_DIAG_EVENT_TYPE;
 
 void limDiagEventReport(tpAniSirGlobal pMac, tANI_U16 eventType, tpPESession pSessionEntry, tANI_U16 status, tANI_U16 reasonCode);
@@ -508,12 +527,6 @@ void peSetResumeChannel(tpAniSirGlobal pMac, tANI_U16 channel, ePhyChanBondState
   --------------------------------------------------------------------------*/
 void peGetResumeChannel(tpAniSirGlobal pMac, tANI_U8* resumeChannel, ePhyChanBondState* resumePhyCbState);
 
-#ifdef FEATURE_WLAN_TDLS_INTERNAL
-tANI_U8 limTdlsFindLinkPeer(tpAniSirGlobal pMac, tSirMacAddr peerMac, tLimTdlsLinkSetupPeer  **setupPeer);
-void limTdlsDelLinkPeer(tpAniSirGlobal pMac, tSirMacAddr peerMac);
-void limStartTdlsTimer(tpAniSirGlobal pMac, tANI_U8 sessionId, TX_TIMER *timer, tANI_U32 timerId, 
-                                      tANI_U16 timerType, tANI_U32 timerMsg);
-#endif
 void limGetShortSlotFromPhyMode(tpAniSirGlobal pMac, tpPESession psessionEntry, tANI_U32 phyMode,
                                 tANI_U8 *pShortSlotEnable);
 
@@ -550,5 +563,19 @@ tANI_U8 limGetOPClassFromChannel(tANI_U8 *country,
 void limParseBeaconForTim(tpAniSirGlobal pMac, tANI_U8* pRxPacketInfo,
                           tpPESession psessionEntry);
 
+void limUpdateMaxRateFlag(tpAniSirGlobal pMac,
+                          tANI_U8 smeSessionId,
+                          tANI_U32 maxRateFlag);
+
+extern tANI_U32 limGetMaxRateFlags(tpDphHashNode pStaDs,
+                                   tpPESession psessionEntry);
+
 void limDecrementPendingMgmtCount (tpAniSirGlobal pMac);
+
+eHalStatus limTxBdComplete(tpAniSirGlobal pMac, void *pData);
+bool lim_is_robust_mgmt_action_frame(uint8 action_catagory);
+tANI_U8 lim_compute_ext_cap_ie_length (tDot11fIEExtCap *ext_cap);
+void lim_update_caps_info_for_bss(tpAniSirGlobal mac_ctx,
+                             uint16_t *caps, uint16_t bss_caps);
+
 #endif /* __LIM_UTILS_H */

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2014 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2014, 2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -91,6 +91,8 @@ typedef struct sAniSirGlobal *tpAniSirGlobal;
 #include "eseGlobal.h"
 #endif
 #include "p2p_Api.h"
+
+#include "limRMC.h"
 
 #if defined WLAN_FEATURE_VOWIFI_11R
 #include <limFTDefs.h>
@@ -231,15 +233,10 @@ typedef struct sLimTimers
 #ifdef FEATURE_WLAN_ESE
     TX_TIMER           gLimEseTsmTimer;
 #endif
-#ifdef FEATURE_WLAN_TDLS_INTERNAL
-    TX_TIMER           gLimTdlsDisRspWaitTimer;
-    TX_TIMER           gLimTdlsLinkSetupRspTimeouTimer;
-    TX_TIMER           gLimTdlsLinkSetupCnfTimeoutTimer;
-#endif
-
     TX_TIMER           gLimPeriodicJoinProbeReqTimer;
     TX_TIMER           gLimDisassocAckTimer;
     TX_TIMER           gLimDeauthAckTimer;
+    TX_TIMER           gLimPeriodicAuthRetryTimer;
     // This timer is started when single shot NOA insert msg is sent to FW for scan in P2P GO mode
     TX_TIMER           gLimP2pSingleShotNoaInsertTimer;
     /* This timer is used to convert active channel to
@@ -257,6 +254,11 @@ typedef struct {
     void *pMlmDisassocReq;
     void *pMlmDeauthReq;
 }tLimDisassocDeauthCnfReq;
+
+typedef struct {
+    tANI_U32 failed_count[MAX_TIDS];
+    v_TIME_t failed_timestamp[MAX_TIDS];
+} tLimStaBAInfo;
 
 typedef struct sAniSirLim
 {
@@ -374,6 +376,8 @@ typedef struct sAniSirLim
 
     //////////////////////////////////////     SCAN/LEARN RELATED START ///////////////////////////////////////////
     tSirMacAddr         gSelfMacAddr;   //added for BT-AMP Support 
+    tSirMacAddr         spoofMacAddr;   //added for Mac Addr Spoofing support
+    tANI_U8             isSpoofingEnabled;
 
     //////////////////////////////////////////     BSS RELATED END ///////////////////////////////////////////
     // Place holder for StartBssReq message
@@ -861,22 +865,6 @@ typedef struct sAniSirLim
 
     ////////////////////////////////  HT RELATED           //////////////////////////////////////////
 
-#ifdef FEATURE_WLAN_TDLS_INTERNAL
-    ////////////////////////////////  TDLS RELATED         //////////////////////////////////////////
-    
-    tSirTdlsDisReq gLimTdlsDisReq ; 
-    //tLimDisResultList *gTdlsDisResultList ;
-    tLimDisResultList *gLimTdlsDisResultList ;
-    tANI_U8 gLimTdlsDisStaCount ;
-    tANI_U8 gAddStaDisRspWait ;
-
-    tLimTdlsLinkSetupInfo  gLimTdlsLinkSetupInfo;
-    
-    /* to track if direct link is b/g/n, this can be independent of AP link */
-#ifdef FEATURE_WLAN_TDLS_NEGATIVE
-    tANI_U32 gLimTdlsNegativeBehavior;  
-#endif
-#endif
 #ifdef FEATURE_WLAN_TDLS
     tANI_U8 gLimAddStaTdls ;
     tANI_U8 gLimTdlsLinkMode ;
@@ -923,6 +911,9 @@ tLimMlmOemDataRsp       *gpLimMlmOemDataRsp;
      * debug marker frame.
      */
     tANI_U32 remOnChnSeqNum;
+    tANI_U32 txBdToken;
+    tANI_U32 EnableTdls2040BSSCoexIE;
+    tLimStaBAInfo staBaInfo[WLAN_MAX_STA_COUNT];
 } tAniSirLim, *tpAniSirLim;
 
 typedef struct sLimMgmtFrameRegistration
@@ -993,6 +984,13 @@ typedef struct sHalMacStartParameters
 
 } tHalMacStartParameters;
 
+typedef enum
+{
+    LIM_AUTH_ACK_NOT_RCD,
+    LIM_AUTH_ACK_RCD_SUCCESS,
+    LIM_AUTH_ACK_RCD_FAILURE,
+} tAuthAckStatus;
+
 // -------------------------------------------------------------------
 /// MAC Sirius parameter structure
 typedef struct sAniSirGlobal
@@ -1030,9 +1028,6 @@ typedef struct sAniSirGlobal
 #ifdef FEATURE_OEM_DATA_SUPPORT
     tOemDataStruct oemData;
 #endif
-#ifdef FEATURE_WLAN_TDLS_INTERNAL
-    tCsrTdlsCtxStruct tdlsCtx ;
-#endif
     tPmcInfo     pmc;
     tSmeBtcInfo  btc;
 
@@ -1062,6 +1057,9 @@ typedef struct sAniSirGlobal
     v_BOOL_t isTdlsPowerSaveProhibited;
 #endif
     tANI_U8 fScanOffload;
+#ifdef WLAN_FEATURE_RMC
+    tLimRmcContext  rmcContext;
+#endif /* WLAN_FEATURE_RMC */
     tANI_U8 isCoalesingInIBSSAllowed;
     tANI_U32 fEnableDebugLog;
     tANI_U32 fDeferIMPSTime;
@@ -1076,8 +1074,18 @@ typedef struct sAniSirGlobal
     v_BOOL_t isCoexScoIndSet;
     v_U8_t miracast_mode;
     v_U8_t fBtcEnableIndTimerVal;
+    v_U8_t roamDelayStatsEnabled;
     tANI_BOOLEAN miracastVendorConfig;
     v_BOOL_t fActiveScanOnDFSChannels;
+    tAuthAckStatus  authAckStatus;
+    sir_mgmt_frame_ind_callback mgmt_frame_ind_cb;
+#ifdef WLAN_FEATURE_ROAM_SCAN_OFFLOAD
+    v_U8_t PERroamCandidatesCnt;
+    tSirCandidateChanInfo candidateChannelInfo[SIR_PER_ROAM_MAX_CANDIDATE_CNT];
+    tSirRoamAPInfo previousRoamApInfo[SIR_PER_ROAM_MAX_CANDIDATE_CNT];
+    v_U32_t PERroamTimeout;
+    v_U32_t currentBssScore;
+#endif
 } tAniSirGlobal;
 
 #ifdef FEATURE_WLAN_TDLS

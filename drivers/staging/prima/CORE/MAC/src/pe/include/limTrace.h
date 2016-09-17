@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2013 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2015 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -33,9 +33,6 @@
 
 *  \author Sunit Bhatia
 
-   Copyright 2008 (c) Qualcomm, Incorporated.  All Rights Reserved.
-
-   Qualcomm Confidential and Proprietary.
 
   ========================================================================*/
 
@@ -96,6 +93,7 @@ enum {
 
 
 void limTraceInit(tpAniSirGlobal pMac);
+void lim_register_debug_callback(void);
 void limTraceReset(tpAniSirGlobal pMac);
 void limTraceUpdateMgmtStat(tpAniSirGlobal pMac, tANI_U8 subtype);
 void limTraceDumpMgmtStat(tpAniSirGlobal pMac, tANI_U8 subtype);

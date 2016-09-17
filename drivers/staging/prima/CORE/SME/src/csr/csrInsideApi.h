@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2014 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -37,6 +37,7 @@
 #define CSR_INSIDE_API_H__
 
 
+#include <linux/version.h>
 #include "csrSupport.h"
 #include "smeInside.h"
 #include "vos_nvitem.h"
@@ -67,8 +68,9 @@
 
 #define CSR_MAX_2_4_GHZ_SUPPORTED_CHANNELS 14
 
-#define CSR_MAX_BSS_SUPPORT            250
+#define CSR_MAX_BSS_SUPPORT            512
 #define SYSTEM_TIME_MSEC_TO_USEC      1000
+#define SYSTEM_TIME_SEC_TO_MSEC       1000
 
 //This number minus 1 means the number of times a channel is scanned before a BSS is remvoed from
 //cache scan result
@@ -84,7 +86,6 @@
 #define CSR_MIC_ERROR_TIMEOUT  (60 * PAL_TIMER_TO_SEC_UNIT)     //60 seconds
 #define CSR_TKIP_COUNTER_MEASURE_TIMEOUT  (60 * PAL_TIMER_TO_SEC_UNIT)     //60 seconds
 #define CSR_SCAN_RESULT_AGING_INTERVAL    (5 * PAL_TIMER_TO_SEC_UNIT)     //5 seconds
-#define CSR_SCAN_RESULT_CFG_AGING_INTERVAL    (PAL_TIMER_TO_SEC_UNIT)     // 1  second
 //the following defines are NOT used by palTimer
 #define CSR_SCAN_AGING_TIME_NOT_CONNECT_NO_PS 50     //50 seconds
 #define CSR_SCAN_AGING_TIME_NOT_CONNECT_W_PS 300     //300 seconds
@@ -109,6 +110,43 @@
 #ifdef FEATURE_WLAN_BTAMP_UT_RF
 #define CSR_JOIN_MAX_RETRY_COUNT             10
 #define CSR_JOIN_RETRY_TIMEOUT_PERIOD        ( 1 *  PAL_TIMER_TO_SEC_UNIT )  // 1 second
+#endif
+
+#ifdef WLAN_FEATURE_ROAM_SCAN_OFFLOAD
+#define ROAMING_RSSI_WEIGHT 50
+#define MIN_RSSI (-100)
+#define MAX_RSSI 0
+#define ROAM_AP_COUNT_WEIGHT 50
+#define ROAM_MAX_COUNT 30
+#define ROAM_MIN_COUNT 0
+#define ROAM_MAX_WEIGHT 100
+
+#define RSSI_WEIGHTAGE 25
+#define HT_CAPABILITY_WEIGHTAGE 10
+#define VHT_CAP_WEIGHTAGE 6
+#define BEAMFORMING_CAP_WEIGHTAGE 2
+#define CHAN_WIDTH_WEIGHTAGE 10
+#define CHAN_BAND_WEIGHTAGE 5
+#define WMM_WEIGHTAGE 2
+#define CCA_WEIGHTAGE 10
+#define OTHER_AP_WEIGHT 30
+
+#define MAX_AP_LOAD 255
+#define PENALTY_TIMEOUT (30 * 60 * 1000)
+#define PENALTY_REMAINING_SCORE (7)
+#define PENALTY_TOTAL_SCORE (10)
+#define PER_EXCELENT_RSSI -40
+#define PER_GOOD_RSSI -55
+#define PER_POOR_RSSI -65
+#define PER_ROAM_EXCELLENT_RSSI_WEIGHT 100
+#define PER_ROAM_GOOD_RSSI_WEIGHT 80
+#define PER_ROAM_BAD_RSSI_WEIGHT 60
+#define PER_ROAM_MAX_WEIGHT 100
+#define PER_ROAM_80MHZ 100
+#define PER_ROAM_40MHZ 70
+#define PER_ROAM_20MHZ 30
+#define PER_ROAM_PENALTY (3/10)
+#define PER_ROAM_MAX_BSS_SCORE 10000
 #endif
 
 typedef enum 
@@ -169,7 +207,9 @@ typedef struct tagCsrScanResult
     eCsrEncryptionType ucEncryptionType; //Preferred Encryption type that matched with profile.
     eCsrEncryptionType mcEncryptionType; 
     eCsrAuthType authType; //Preferred auth type that matched with the profile.
-
+#ifdef WLAN_FEATURE_ROAM_SCAN_OFFLOAD
+    int congestionScore;
+#endif
     tCsrScanResultInfo Result;
 }tCsrScanResult;
 
@@ -255,10 +295,6 @@ eHalStatus csrScanForSSID(tpAniSirGlobal pMac, tANI_U32 sessionId, tCsrRoamProfi
 eHalStatus csrScanForCapabilityChange(tpAniSirGlobal pMac, tSirSmeApNewCaps *pNewCaps);
 eHalStatus csrScanStartGetResultTimer(tpAniSirGlobal pMac);
 eHalStatus csrScanStopGetResultTimer(tpAniSirGlobal pMac);
-eHalStatus csrScanStartResultAgingTimer(tpAniSirGlobal pMac);
-eHalStatus csrScanStopResultAgingTimer(tpAniSirGlobal pMac);
-eHalStatus csrScanStartResultCfgAgingTimer(tpAniSirGlobal pMac);
-eHalStatus csrScanStopResultCfgAgingTimer(tpAniSirGlobal pMac);
 eHalStatus csrScanBGScanEnable(tpAniSirGlobal pMac);
 eHalStatus csrScanStartIdleScanTimer(tpAniSirGlobal pMac, tANI_U32 interval);
 eHalStatus csrScanStopIdleScanTimer(tpAniSirGlobal pMac);
@@ -386,7 +422,6 @@ eCsrCfgDot11Mode csrGetCfgDot11ModeFromCsrPhyMode(tCsrRoamProfile *pProfile, eCs
 tANI_U32 csrTranslateToWNICfgDot11Mode(tpAniSirGlobal pMac, eCsrCfgDot11Mode csrDot11Mode);
 void csrSaveChannelPowerForBand( tpAniSirGlobal pMac, tANI_BOOLEAN fPopulate5GBand );
 void csrApplyChannelPowerCountryInfo( tpAniSirGlobal pMac, tCsrChannel *pChannelList, tANI_U8 *countryCode, tANI_BOOLEAN updateRiva);
-void csrUpdateFCCChannelList(tpAniSirGlobal pMac);
 void csrApplyPower2Current( tpAniSirGlobal pMac );
 void csrAssignRssiForCategory(tpAniSirGlobal pMac, tANI_S8 bestApRssi, tANI_U8 catOffset);
 tANI_BOOLEAN csrIsMacAddressZero( tpAniSirGlobal pMac, tCsrBssid *pMacAddr );
@@ -421,9 +456,11 @@ eHalStatus csrRoamOpenSession(tpAniSirGlobal pMac,
                               tANI_U8 *pbSessionId);
 //fSync: TRUE means cleanupneeds to handle synchronously.
 eHalStatus csrRoamCloseSession( tpAniSirGlobal pMac, tANI_U32 sessionId,
-                                tANI_BOOLEAN fSync, 
+                                tANI_BOOLEAN fSync, tANI_U8 bPurgeList,
                                 csrRoamSessionCloseCallback callback,
                                 void *pContext );
+void csrPurgeSmeCmdList(tpAniSirGlobal pMac, tANI_U32 sessionId,
+                        bool flush_all);
 void csrCleanupSession(tpAniSirGlobal pMac, tANI_U32 sessionId);
 eHalStatus csrRoamGetSessionIdFromBSSID( tpAniSirGlobal pMac, tCsrBssid *bssid, tANI_U32 *pSessionId );
 eCsrCfgDot11Mode csrFindBestPhyMode( tpAniSirGlobal pMac, tANI_U32 phyMode );
@@ -476,6 +513,15 @@ eHalStatus csrScanBGScanAbort(tpAniSirGlobal);
   -------------------------------------------------------------------------------*/
 eHalStatus csrScanGetResult(tpAniSirGlobal, tCsrScanResultFilter *pFilter, tScanResultHandle *phResult);
 
+#ifdef FEATURE_WLAN_LFR
+/* ---------------------------------------------------------------------------
+    \fn csrAddChannelToOccupiedChannelList
+    \brief Add channel no given by fast reassoc cmd into occ chn list
+    \param channel - channel no passed by fast reassoc cmd
+    \return void
+  -------------------------------------------------------------------------------*/
+void csrAddChannelToOccupiedChannelList(tpAniSirGlobal pMac, tANI_U8 channel);
+#endif
 /* ---------------------------------------------------------------------------
     \fn csrScanFlushResult
     \brief Clear scan results.
@@ -636,6 +682,11 @@ tANI_BOOLEAN csrIsProfileWapi( tCsrRoamProfile *pProfile );
 #define WLAN_SECURITY_EVENT_PMKID_CANDIDATE_FOUND  7
 #define WLAN_SECURITY_EVENT_PMKID_UPDATE    8
 #define WLAN_SECURITY_EVENT_MIC_ERROR       9   
+#define WLAN_SECURITY_EVENT_SET_UNICAST_REQ  10
+#define WLAN_SECURITY_EVENT_SET_UNICAST_RSP  11
+#define WLAN_SECURITY_EVENT_SET_BCAST_REQ    12
+#define WLAN_SECURITY_EVENT_SET_BCAST_RSP    13
+
 
 #define AUTH_OPEN       0
 #define AUTH_SHARED     1
@@ -911,8 +962,12 @@ void csrCallRoamingCompletionCallback(tpAniSirGlobal pMac, tCsrRoamSession *pSes
     \return eHalStatus
   ---------------------------------------------------------------------------*/
 eHalStatus csrRoamIssueDisassociateStaCmd( tpAniSirGlobal pMac, 
-                                           tANI_U32 sessionId, 
+                                           tANI_U32 sessionId,
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,18,0))
+                                           const tANI_U8 *pPeerMacAddr,
+#else
                                            tANI_U8 *pPeerMacAddr,
+#endif
                                            tANI_U32 reason);
 
 /* ---------------------------------------------------------------------------
@@ -1018,9 +1073,20 @@ eHalStatus csrScanCreateEntryInScanCache(tpAniSirGlobal pMac, tANI_U32 sessionId
 
 eHalStatus csrUpdateChannelList(tpAniSirGlobal pMac);
 eHalStatus csrRoamDelPMKIDfromCache( tpAniSirGlobal pMac, tANI_U32 sessionId,
-                                     tANI_U8 *pBSSId, tANI_BOOLEAN flush_cache );
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,18,0))
+                                     const tANI_U8 *pBSSId,
+#else
+                                     tANI_U8 *pBSSId,
+#endif
+                                     tANI_BOOLEAN flush_cache );
 tANI_BOOLEAN csrElectedCountryInfo(tpAniSirGlobal pMac);
 void csrAddVoteForCountryInfo(tpAniSirGlobal pMac, tANI_U8 *pCountryCode);
 void csrClearVotesForCountryInfo(tpAniSirGlobal pMac);
+void csr_remove_bssid_from_scan_list(tpAniSirGlobal pMac,
+       tSirMacAddr bssid);
+
+#ifdef WLAN_FEATURE_AP_HT40_24G
+eHalStatus csrSetHT2040Mode(tpAniSirGlobal pMac, tANI_U32 sessionId, tANI_U8 cbMode);
+#endif
 #endif
 

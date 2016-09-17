@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2013 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2013, 2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -51,6 +51,7 @@
 
 #include "limApi.h"
 #include "limDebug.h"
+#include "limTrace.h"
 #include "limSendSmeRspMessages.h"
 #include "sysGlobal.h"
 #include "dphGlobal.h"
@@ -257,12 +258,16 @@ typedef struct sLimMlmAssocInd
 
 
     tAniBool               WmmStaInfoPresent;
+#ifdef WLAN_FEATURE_AP_HT40_24G
+    tAniBool               HT40MHzIntoPresent;
+#endif
 
     // Required for indicating the frames to upper layer
     tANI_U32             beaconLength;
     tANI_U8*             beaconPtr;
     tANI_U32             assocReqLength;
-    tANI_U8*             assocReqPtr;    
+    tANI_U8*             assocReqPtr;
+    uint32_t             rate_flags;
 } tLimMlmAssocInd, *tpLimMlmAssocInd;
 
 typedef struct sLimMlmReassocReq
@@ -296,6 +301,9 @@ typedef struct sLimMlmReassocInd
     tSirSupChnl             supportedChannels;
 
     tAniBool               WmmStaInfoPresent;
+#ifdef WLAN_FEATURE_AP_HT40_24G
+    tAniBool               HT40MHzIntoPresent;
+#endif
 
     // Required for indicating the frames to upper layer
     tANI_U32             beaconLength;
@@ -670,7 +678,8 @@ void limProcessActionFrameNoSession(tpAniSirGlobal pMac, tANI_U8 *pRxMetaInfo);
 tSirRetStatus limPopulateMacHeader(tpAniSirGlobal, tANI_U8*, tANI_U8, tANI_U8, tSirMacAddr,tSirMacAddr);
 tSirRetStatus limSendProbeReqMgmtFrame(tpAniSirGlobal, tSirMacSSid *, tSirMacAddr, tANI_U8, tSirMacAddr, tANI_U32, tANI_U32, tANI_U8 *); 
 void limSendProbeRspMgmtFrame(tpAniSirGlobal, tSirMacAddr, tpAniSSID, short, tANI_U8, tpPESession, tANI_U8);
-void limSendAuthMgmtFrame(tpAniSirGlobal, tSirMacAuthFrameBody *, tSirMacAddr, tANI_U8,tpPESession);
+void limSendAuthMgmtFrame(tpAniSirGlobal, tSirMacAuthFrameBody *, tSirMacAddr,
+                                             tANI_U8, tpPESession , tAniBool);
 void limSendAssocReqMgmtFrame(tpAniSirGlobal, tLimMlmAssocReq *,tpPESession);
 void limSendReassocReqMgmtFrame(tpAniSirGlobal, tLimMlmReassocReq *,tpPESession);
 #ifdef WLAN_FEATURE_VOWIFI_11R
@@ -714,18 +723,6 @@ tSirRetStatus limSendRadioMeasureReportActionFrame(tpAniSirGlobal, tANI_U8, tANI
 void limProcessIappFrame(tpAniSirGlobal, tANI_U8 *,tpPESession);
 #endif
 
-#ifdef FEATURE_WLAN_TDLS_INTERNAL
-tSirRetStatus limSendTdlsDisReqFrame(tpAniSirGlobal pMac, 
-           tSirMacAddr peer_mac, tANI_U8 dialog, tpPESession psessionEntry);
-tSirRetStatus limSendTdlsLinkSetupReqFrame(tpAniSirGlobal pMac,
-           tSirMacAddr peerMac, tANI_U8 dialog, tpPESession psessionEntry,
-           tANI_U8* addIe, tANI_U16 len); 
-
-eHalStatus limTdlsPrepareSetupReqFrame(tpAniSirGlobal pMac,
-                              tLimTdlsLinkSetupInfo *linkSetupInfo,
-                                 tANI_U8 dialog, tSirMacAddr peerMac,
-                                                 tpPESession psessionEntry);
-#endif
 #ifdef FEATURE_WLAN_TDLS
 void limInitTdlsData(tpAniSirGlobal, tpPESession);
 tSirRetStatus limProcessSmeTdlsMgmtSendReq(tpAniSirGlobal pMac, 
@@ -738,7 +735,7 @@ tSirRetStatus limProcessSmeTdlsDelStaReq(tpAniSirGlobal pMac,
                                                            tANI_U32 *pMsgBuf);
 void limSendSmeTDLSDeleteAllPeerInd(tpAniSirGlobal pMac, tpPESession psessionEntry);
 void limSendSmeMgmtTXCompletion(tpAniSirGlobal pMac,
-                                tpPESession psessionEntry,
+                                tANI_U32 smeSessionId,
                                 tANI_U32 txCompleteStatus);
 tSirRetStatus limDeleteTDLSPeers(tpAniSirGlobal pMac, tpPESession psessionEntry);
 eHalStatus limProcessTdlsAddStaRsp(tpAniSirGlobal pMac, void *msg, tpPESession);
@@ -831,6 +828,7 @@ void limProcessSwitchChannelRsp(tpAniSirGlobal pMac,  void * );
 void limSendHalInitScanReq( tpAniSirGlobal, tLimLimHalScanState, tSirLinkTrafficCheck);
 void limSendHalStartScanReq( tpAniSirGlobal, tANI_U8, tLimLimHalScanState);
 void limSendHalEndScanReq( tpAniSirGlobal, tANI_U8, tLimLimHalScanState);
+void limSendTLPauseInd(tpAniSirGlobal pMac, uint16_t staId);
 void limSendHalFinishScanReq( tpAniSirGlobal, tLimLimHalScanState);
 
 void limContinuePostChannelScan(tpAniSirGlobal pMac);
@@ -875,6 +873,15 @@ tSirRetStatus limSendSaQueryRequestFrame( tpAniSirGlobal pMac, tANI_U8 *transId,
 tSirRetStatus limSendSaQueryResponseFrame( tpAniSirGlobal pMac, 
                    tANI_U8 *transId, tSirMacAddr peer,tpPESession psessionEntry);
 #endif
+
+#ifdef WLAN_FEATURE_RMC
+void limProcessRMCMessages(tpAniSirGlobal pMac, eRmcMessageType msgType,
+                             tANI_U32 *pMsgBuf);
+tSirRetStatus limSendRMCActionFrame(tpAniSirGlobal  pMac,
+                 tSirMacAddr peerMacAddr, tSirRMCInfo  *pRMC,
+                 tpPESession psessionEntry);
+#endif /* WLAN_FEATURE_RMC */
+
 // Inline functions
 
 /**
@@ -915,7 +922,10 @@ limPostSmeMessage(tpAniSirGlobal pMac, tANI_U32 msgType, tANI_U32 *pMsgBuf)
     msg.bodyptr = pMsgBuf;
     msg.bodyval = 0;
     if (msgType > eWNI_SME_MSG_TYPES_BEGIN)
+    {
+        MTRACE(macTrace(pMac, TRACE_CODE_TX_SME_MSG, NO_SESSION, msg.type));
         limProcessSmeReqMessages(pMac, &msg);
+    }
     else
         limProcessMlmRspMessages(pMac, msgType, pMsgBuf);
 } /*** end limPostSmeMessage() ***/
@@ -958,6 +968,7 @@ limPostMlmMessage(tpAniSirGlobal pMac, tANI_U32 msgType, tANI_U32 *pMsgBuf)
     msg.type = (tANI_U16) msgType;
     msg.bodyptr = pMsgBuf;
     msg.bodyval = 0;
+    MTRACE(macTraceMsgRx(pMac, NO_SESSION, msg.type));
     limProcessMlmReqMessages(pMac, &msg);
 } /*** end limPostMlmMessage() ***/
 
@@ -1074,25 +1085,6 @@ void limSendP2PActionFrame(tpAniSirGlobal pMac, tpSirMsgQ pMsg);
 void limAbortRemainOnChan(tpAniSirGlobal pMac);
 tSirRetStatus __limProcessSmeNoAUpdate(tpAniSirGlobal pMac, tANI_U32 *pMsgBuf);
 void limProcessRegdDefdSmeReqAfterNOAStart(tpAniSirGlobal pMac);
-#ifdef FEATURE_WLAN_TDLS_INTERNAL
-void limProcessTdlsFrame(tpAniSirGlobal, tANI_U32 *);
-void limProcessTdlsPublicActionFrame(tpAniSirGlobal pMac, tANI_U32 *pBd, 
-                                                               tpPESession) ;
-#ifdef FEATURE_WLAN_TDLS_NEGATIVE
-#define LIM_TDLS_NEGATIVE_WRONG_BSSID_IN_DSCV_REQ   0x1 /* 5.1.4-5 */
-#define LIM_TDLS_NEGATIVE_WRONG_BSSID_IN_SETUP_REQ  0x2 /* 5.2.4-16 */
-#define LIM_TDLS_NEGATIVE_STATUS_37_IN_SETUP_CNF    0x4 /* 5.2.4-10 */
-#define LIM_TDLS_NEGATIVE_SEND_REQ_TO_SETUP_REQ     0x8 /* 5.2.4-20/32 */
-#define LIM_TDLS_NEGATIVE_RSP_TIMEOUT_TO_SETUP_REQ  0x10 /* 5.2.3.4 */
-#define LIM_TDLS_NEGATIVE_TREAT_TDLS_PROHIBIT_AP    0x20 /* 5.2.4-49 */
-   /* following is not paticularily tested in WFA test plan, but will help to validate our TDLS behavior in-house */
-#define LIM_TDLS_NEGATIVE_WRONG_BSSID_IN_DSCV_RSP   0x40
-#define LIM_TDLS_NEGATIVE_WRONG_BSSID_IN_SETUP_RSP  0x80
-
-void limTdlsSetNegativeBehavior(tpAniSirGlobal pMac, tANI_U8 value, tANI_BOOLEAN on);
-#endif
-#endif
-
 void limProcessDisassocAckTimeout(tpAniSirGlobal pMac);
 void limProcessDeauthAckTimeout(tpAniSirGlobal pMac);
 eHalStatus limSendDisassocCnf(tpAniSirGlobal pMac);
@@ -1109,5 +1101,10 @@ void limProcessRxScanEvent(tpAniSirGlobal mac, void *buf);
 
 int limProcessRemainOnChnlReq(tpAniSirGlobal pMac, tANI_U32 *pMsg);
 void limRemainOnChnRsp(tpAniSirGlobal pMac, eHalStatus status, tANI_U32 *data);
+void limProcessMlmSpoofMacAddrRsp(tpAniSirGlobal pMac, tSirRetStatus rspStatus);
+tSirRetStatus limProcessSmeSetTdls2040BSSCoexReq(tpAniSirGlobal pMac,
+                                                 tANI_U32 *pMsgBuf);
+tSirRetStatus limProcessSmeDelAllTdlsPeers(tpAniSirGlobal pMac,
+                                           tANI_U32 *pMsgBuf);
 #endif /* __LIM_TYPES_H */
 

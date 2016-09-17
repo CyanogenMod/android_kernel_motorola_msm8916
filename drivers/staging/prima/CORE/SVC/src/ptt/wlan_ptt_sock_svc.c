@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2013 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -96,7 +96,7 @@ int ptt_sock_send_msg_to_app(tAniHdr *wmsg, int radio, int src_mod, int pid, int
          __func__, radio);
       return -EINVAL;
    }
-   payload_len = wmsg_length + 4;  // 4 extra bytes for the radio idx
+   payload_len = wmsg_length + sizeof(wnl->radio) + sizeof(tAniHdr);
    tot_msg_len = NLMSG_SPACE(payload_len);
    if ((skb = dev_alloc_skb(tot_msg_len)) == NULL) {
       PTT_TRACE(VOS_TRACE_LEVEL_ERROR, "%s: dev_alloc_skb() failed for msg size[%d]\n",
@@ -113,12 +113,22 @@ int ptt_sock_send_msg_to_app(tAniHdr *wmsg, int radio, int src_mod, int pid, int
    wnl = (tAniNlHdr *) nlh;
    wnl->radio = radio;
    vos_mem_copy(&wnl->wmsg, wmsg, wmsg_length);
-   PTT_TRACE(VOS_TRACE_LEVEL_INFO, "%s: Sending Msg Type [0x%X] to pid[%d]\n",
-      __func__, be16_to_cpu(wmsg->type), pid);
 #ifdef PTT_SOCK_DEBUG_VERBOSE
    ptt_sock_dump_buf((const unsigned char *)skb->data, skb->len);
 #endif
-   err = nl_srv_ucast(skb, pid, flag);
+   if (pid != INVALID_PID)
+   {
+       err = nl_srv_ucast(skb, pid, flag);
+   }
+   else
+   {
+       err = nl_srv_bcast(skb);
+   }
+   if (err) {
+      PTT_TRACE(VOS_TRACE_LEVEL_INFO,
+         "%s:Failed sending Msg Type [0x%X] to pid[%d]\n",
+         __func__, be16_to_cpu(wmsg->type), pid);
+   }
    return err;
 }
 /*
@@ -143,11 +153,11 @@ static void ptt_sock_proc_reg_req(tAniHdr *wmsg, int radio)
    pAdapterHandle->ptt_pid = reg_req->pid;
    rspmsg.regReq.pid= reg_req->pid;
    rspmsg.wniHdr.type = cpu_to_be16(ANI_MSG_APP_REG_RSP);
-   rspmsg.wniHdr.length = cpu_to_be16(sizeof(rspmsg));
+   rspmsg.wniHdr.length = cpu_to_be16(sizeof(rspmsg.wniHdr));
    if (ptt_sock_send_msg_to_app((tAniHdr *)&rspmsg.wniHdr, radio,
       ANI_NL_MSG_PUMAC, reg_req->pid, MSG_DONTWAIT) < 0)
    {
-      PTT_TRACE(VOS_TRACE_LEVEL_ERROR, "%s: Error sending ANI_MSG_APP_REG_RSP to pid[%d]\n",
+      PTT_TRACE(VOS_TRACE_LEVEL_INFO, "%s: Error sending ANI_MSG_APP_REG_RSP to pid[%d]\n",
          __func__, reg_req->pid);
    }
 }
@@ -280,6 +290,10 @@ static int ptt_sock_rx_nlink_msg (struct sk_buff * skb)
    tAniNlHdr *wnl;
    int radio;
    int type;
+
+   if (0 != wlan_hdd_validate_context(pAdapterHandle))
+       return -EINVAL;
+
    wnl = (tAniNlHdr *) skb->data;
    radio = wnl->radio;
    type = wnl->nlh.nlmsg_type;
@@ -310,4 +324,12 @@ int ptt_sock_activate_svc(void *pAdapter)
 #endif /* WLAN_KD_READY_NOTIFIER */
    return 0;
 }
+
+int ptt_sock_deactivate_svc(hdd_context_t *pHddCtx)
+{
+   nl_srv_unregister(ANI_NL_MSG_PUMAC, ptt_sock_rx_nlink_msg);
+   nl_srv_unregister(ANI_NL_MSG_PTT, ptt_sock_rx_nlink_msg);
+   return 0;
+}
+
 #endif //PTT_SOCK_SVC_ENABLE

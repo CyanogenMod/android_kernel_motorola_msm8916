@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -36,9 +36,6 @@
                
    Memory management functions
   
-   Copyright 2008 (c) Qualcomm, Incorporated.  All Rights Reserved.
-   
-   Qualcomm Confidential and Proprietary.
   
   ========================================================================*/
 
@@ -48,7 +45,7 @@
   Include Files
   ------------------------------------------------------------------------*/
 #include <vos_types.h>
-
+#include <linux/version.h>
 /*-------------------------------------------------------------------------- 
   Preprocessor definitions and constants
   ------------------------------------------------------------------------*/
@@ -147,7 +144,15 @@ v_VOID_t vos_mem_set( v_VOID_t *ptr, v_SIZE_t numBytes, v_BYTE_t value );
   --------------------------------------------------------------------------*/
 v_VOID_t vos_mem_zero( v_VOID_t *ptr, v_SIZE_t numBytes );
 
+static __inline__ unsigned long vos_htonl(unsigned long ul)
+{
+  return( ( ( ul & 0x000000ff ) << 24 ) |
+          ( ( ul & 0x0000ff00 ) <<  8 ) |
+          ( ( ul & 0x00ff0000 ) >>  8 ) |
+          ( ( ul & 0xff000000 ) >> 24 )   );
+}
 
+void vos_buff_to_hl_buff (v_U8_t *buffer, int size);
 /*----------------------------------------------------------------------------
   
   \brief vos_mem_copy() - Copy memory
@@ -213,7 +218,18 @@ v_VOID_t vos_mem_move( v_VOID_t *pDst, const v_VOID_t *pSrc, v_SIZE_t numBytes )
                        locations are equal or not equal. 
     
   -------------------------------------------------------------------------------*/
-v_BOOL_t vos_mem_compare( const v_VOID_t *pMemory1, const v_VOID_t *pMemory2, v_U32_t numBytes );
+v_BOOL_t vos_mem_compare(
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,18,0))
+                          const v_VOID_t *pMemory1,
+#else
+                          v_VOID_t *pMemory1,
+#endif
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,18,0))
+                          const v_VOID_t *pMemory2,
+#else
+                          v_VOID_t *pMemory2,
+#endif
+                          v_U32_t numBytes);
 
 
 /** ---------------------------------------------------------------------------

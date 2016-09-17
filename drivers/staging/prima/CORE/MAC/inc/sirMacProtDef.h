@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011-2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -173,12 +173,14 @@
 #define SIR_MAC_ACTION_UNPROT_WNM     11
 #define SIR_MAC_ACTION_TDLS           12
 #define SIR_MAC_ACITON_MESH           13
-#define SIR_MAC_ACTION_MULTIHOP       14
+#define SIR_MAC_ACTION_MHF            14
 #define SIR_MAC_SELF_PROTECTED        15
 #define SIR_MAC_ACTION_WME            17
+#define SIR_MAC_ACTION_FST            18
 #define SIR_MAC_ACTION_VHT            21
 
-
+#define SIR_MAC_ACTION_TX             1
+#define SIR_MAC_ACTION_RX             2
 // QoS management action codes
 
 #define SIR_MAC_QOS_ADD_TS_REQ      0
@@ -251,6 +253,12 @@
 #define SIR_MAC_ACTION_VENDOR_SPECIFIC 9
 #define SIR_MAC_ACTION_VENDOR_SPECIFIC_CATEGORY     0x7F
 #define SIR_MAC_ACTION_P2P_SUBTYPE_PRESENCE_RSP     2
+
+// Public Action for 20/40 BSS Coexistence
+#ifdef WLAN_FEATURE_AP_HT40_24G
+#define SIR_MAC_ACTION_2040_BSS_COEXISTENCE     0
+#endif
+
 
 #ifdef WLAN_FEATURE_11W
 //11w SA query request/response action frame category code
@@ -411,6 +419,7 @@
 #define SIR_MAC_HT_INFO_EID_MIN    0
 #define SIR_MAC_HT_INFO_EID_MAX    255
 #define SIR_MAC_OBSS_SCAN_PARAMETERS_EID 74
+#define SIR_MAC_EXTENDED_CAPABILITIES_EID 127
 
 #ifdef WLAN_FEATURE_11AC
 #define SIR_MAC_VHT_CAPABILITIES_EID   191
@@ -1292,7 +1301,6 @@ typedef __ani_attr_pre_packed struct sSirMacEdcaParamSetIE
     tSirMacEdcaParamRecord acvo; // voice
 } __ani_attr_packed tSirMacEdcaParamSetIE;
 
-#if 1
 typedef __ani_attr_pre_packed struct sSirMacQoSParams
 {
     tANI_U8        count;
@@ -1300,7 +1308,6 @@ typedef __ani_attr_pre_packed struct sSirMacQoSParams
     tANI_U8        CWmin[8];
     tANI_U8        AIFS[8];
 } __ani_attr_packed tSirMacQoSParams;
-#endif
 
 typedef __ani_attr_pre_packed struct sSirMacQbssLoadIE
 {
@@ -2441,6 +2448,18 @@ typedef __ani_attr_pre_packed struct sSirMacVendorSpecificFrameHdr
 } __ani_attr_packed tSirMacVendorSpecificFrameHdr, *tpSirMacVendorSpecificFrameHdr;
 #endif
 
+#ifdef WLAN_FEATURE_RMC
+typedef __ani_attr_pre_packed struct sSirMacIbssExtNetworkFrameHdr
+{
+    tANI_U8    category;
+    tANI_U8    Oui[3];
+    tANI_U8    MagicCode[6];
+    tANI_U8    version;
+    tANI_U8    actionID;
+    tANI_U32   dialogToken;
+} __ani_attr_packed tSirMacIbssExtNetworkFrameHdr, *tpSirMacIbssExtNetworkFrameHdr;
+#endif /* WLAN_FEATURE_RMC */
+
 typedef __ani_attr_pre_packed struct sSirMacVendorSpecificPublicActionFrameHdr
 {
     tANI_U8    category;
@@ -2872,6 +2891,24 @@ typedef __ani_attr_pre_packed struct sSirPhy11aHdr
 
 #define SIR_MAC_MIN_IE_LEN 2 // Minimum IE length for IE validation
 
+#ifdef WLAN_FEATURE_RMC
+
+// RMC action codes
+#define SIR_MAC_RMC_ENABLE_REQ                  0
+#define SIR_MAC_RMC_DISABLE_REQ                 1
+#define SIR_MAC_RMC_RULER_INFORM_SELECTED      2
+#define SIR_MAC_RMC_RULER_INFORM_CANCELLED     3
+
+// RMC protocol version
+#define SIR_MAC_RMC_VER 0x01
+
+// Organization Identifier
+#define SIR_MAC_RMC_OUI             "\x00\x16\x32"
+#define SIR_MAC_RMC_OUI_SIZE        3
+
+#define SIR_MAC_RMC_MCAST_ADDRESS  "\x01\x00\x5E\x00\x02\x0A"
+
+#endif /* WLAN_FEATURE_RMC */
 
 #define SIR_MAC_TI_TYPE_REASSOC_DEADLINE        1
 #define SIR_MAC_TI_TYPE_KEY_LIFETIME            2

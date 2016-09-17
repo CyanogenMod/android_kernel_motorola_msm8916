@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2014 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011-2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -40,12 +40,16 @@
 #define CSRINTERNAL_H__
 
 #include "vos_status.h"
+#include "vos_utils.h"
+
 #include "vos_lock.h"
 
 #include "palTimer.h"
 #include "csrSupport.h"
 #include "vos_nvitem.h"
 #include "wlan_qct_tl.h"
+
+#include "csrApi.h"
 
 #ifdef WLAN_FEATURE_NEIGHBOR_ROAMING
 #include "csrNeighborRoam.h"
@@ -274,6 +278,7 @@ typedef enum
    eCsrGlobalClassCStats,
    eCsrGlobalClassDStats,
    eCsrPerStaStats,
+   eCsrPerPktStats,
    eCsrMaxStats
 }eCsrRoamStatsClassTypes;
 
@@ -404,7 +409,7 @@ typedef struct tagScanCmd
         tCsrBGScanRequest bgScanRequest;
     }u;
     //This flag will be set while aborting the scan due to band change
-    tANI_BOOLEAN            abortScanDueToBandChange;
+     eCsrAbortReason        abortScanIndication;
 }tScanCmd;
 
 typedef struct tagRoamCmd
@@ -618,6 +623,13 @@ typedef struct tagCsrConfig
 #ifdef WLAN_FEATURE_ROAM_SCAN_OFFLOAD
     tANI_U8      isRoamOffloadScanEnabled;
     tANI_BOOLEAN bFastRoamInConIniFeatureEnabled;
+    v_BOOL_t     isPERRoamEnabled;
+    v_BOOL_t     isPERRoamCCAEnabled;
+    tANI_U32     rateUpThreshold;
+    tANI_U32     rateDownThreshold;
+    tANI_U32     waitPeriodForNextPERScan;
+    tANI_U32     PERtimerThreshold;
+    tANI_U32     PERroamTriggerPercent;
 #endif
 #endif
 
@@ -672,6 +684,29 @@ typedef struct tagCsrConfig
     tANI_BOOLEAN initialScanSkipDFSCh;
     tANI_BOOLEAN ignorePeerErpInfo;
     tANI_BOOLEAN sendDeauthBeforeCon;
+#ifdef WLAN_FEATURE_AP_HT40_24G
+    tANI_BOOLEAN apHT40_24GEnabled;
+    tANI_U32 channelBondingAPMode24GHz; // Use for SAP/P2P GO 2.4GHz channel Bonding
+#endif
+    tANI_U32 nOBSSScanWidthTriggerInterval;
+    tANI_U8 roamDelayStatsEnabled;
+    tANI_BOOLEAN ignorePeerHTopMode;
+    tANI_BOOLEAN disableP2PMacSpoofing;
+    tANI_BOOLEAN enableFatalEvent;
+    tANI_U8 max_chan_for_dwell_time_cfg;
+    uint32_t enable_edca_params;
+    uint32_t edca_vo_cwmin;
+    uint32_t edca_vi_cwmin;
+    uint32_t edca_bk_cwmin;
+    uint32_t edca_be_cwmin;
+    uint32_t edca_vo_cwmax;
+    uint32_t edca_vi_cwmax;
+    uint32_t edca_bk_cwmax;
+    uint32_t edca_be_cwmax;
+    uint32_t edca_vo_aifs;
+    uint32_t edca_vi_aifs;
+    uint32_t edca_bk_aifs;
+    uint32_t edca_be_aifs;
 }tCsrConfig;
 
 typedef struct tagCsrChannelPowerInfo
@@ -717,8 +752,6 @@ typedef struct tagCsrScanStruct
     vos_timer_t hTimerStaApConcTimer;
 #endif
     vos_timer_t hTimerIdleScan;
-    vos_timer_t hTimerResultAging;
-    vos_timer_t hTimerResultCfgAging;
     tPalTimerHandle hTimerBgScan;
     //changes on every scan, it is used as a flag for whether 11d info is found on every scan
     tANI_U8 channelOf11dInfo;
@@ -782,7 +815,7 @@ typedef struct tagCsrScanStruct
     /*Customer wants to optimize the scan time. Avoiding scans(passive) on DFS
     * channels while swipping through both bands can save some time
     * (apprx 1.3 sec) */
-    tANI_BOOLEAN fEnableDFSChnlScan;
+    tANI_U8 fEnableDFSChnlScan;
 
     /*
     * To enable/disable scanning only 2.4Ghz channels on first scan
@@ -800,28 +833,9 @@ typedef struct tagCsrScanStruct
     csrScanCompleteCallback callback11dScanDone;
     eCsrBand  scanBandPreference;  //This defines the band perference for scan
     bool fcc_constraint;
+    /* flag to defer updated chanel list */
+    bool defer_update_channel_list;
 }tCsrScanStruct;
-
-#ifdef FEATURE_WLAN_TDLS_INTERNAL
-/*
- * struct to carry TDLS discovery info..
- */
-typedef struct sCsrTdlsContext
-{
-    tDblLinkList tdlsPotentialPeerList ;
-    tANI_U16 tdlsCommonFlag ;
-    tANI_U16 tdlsCommonState ;
-    tANI_U16 tdlsPeerCount ;
-}tCsrTdlsCtxStruct;
-
-typedef struct sCsrTdlsPeerLinkInfo
-{
-    tListElem tdlsPeerStaLink ;
-    tSirTdlsPeerInfo tdlsDisPeerInfo ;
-}tCsrTdlsPeerLinkinfo ;
-#endif
-
-
 
 
 //Save the connected information. This structure + connectedProfile
@@ -901,7 +915,8 @@ typedef struct tagCsrRoamSession
     tCsrRoamConnectedInfo connectedInfo;
     tCsrRoamProfile *pCurRoamProfile;
     tSirBssDescription *pConnectBssDesc;
-    tANI_U16 NumPmkidCache;
+    tANI_U16 NumPmkidCache; /* valid no. of pmkid in the cache */
+    tANI_U16 CurCacheIndex; /* the index in pmkidcache to write next to */
     tPmkidCacheInfo PmkidCacheInfo[CSR_MAX_PMKID_ALLOWED];
     tANI_U8 cJoinAttemps;
     //This may or may not have the up-to-date valid channel list
@@ -976,6 +991,7 @@ typedef struct tagCsrRoamSession
     * it is needed by the HS 2.0 passpoint certification 5.2.a and b testcases */
     tANI_BOOLEAN fIgnorePMKIDCache;
     tANI_BOOLEAN abortConnection;
+    bool dhcp_done;
 } tCsrRoamSession;
 
 typedef struct tagCsrRoamStruct
@@ -1003,6 +1019,7 @@ typedef struct tagCsrRoamStruct
     tCsrGlobalClassCStatsInfo  classCStatsInfo;
     tCsrGlobalClassDStatsInfo  classDStatsInfo;
     tCsrPerStaStatsInfo        perStaStatsInfo[CSR_MAX_STA];
+    tPerTxPacketFrmFw          perPktStatsInfo;
     tDblLinkList  statsClientReqList;
     tDblLinkList  peStatsReqList;
     tCsrTlStatsReqInfo  tlStatsReqInfo;
@@ -1457,3 +1474,8 @@ tANI_BOOLEAN csrRoamIsStaMode(tpAniSirGlobal pMac, tANI_U32 sessionId);
 #endif
 
 void csrDisableDfsChannel(tpAniSirGlobal pMac);
+
+#ifdef WLAN_FEATURE_RMC
+eHalStatus csrEnableRMC(tpAniSirGlobal pMac, tANI_U32 sessionId);
+eHalStatus csrDisableRMC(tpAniSirGlobal pMac, tANI_U32 sessionId);
+#endif /* WLAN_FEATURE_RMC */

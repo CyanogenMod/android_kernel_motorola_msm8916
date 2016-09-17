@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2014-2015 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -31,6 +31,7 @@
 #include "macTrace.h"
 
 #define NO_SESSION 0xFF
+#define TRACE_CODE_HDD_RX_SME_MSG 0xFF
 
 enum
 {
@@ -101,10 +102,20 @@ enum
     TRACE_CODE_HDD_STOP_NETDEV,
     TRACE_CODE_HDD_WAKE_NETDEV,
     TRACE_CODE_HDD_FLUSH_TX_QUEUES,
+    TRACE_CODE_HDD_CFG80211_RESUME_WLAN,
+    TRACE_CODE_HDD_CFG80211_SUSPEND_WLAN,
+    TRACE_CODE_HDD_CFG80211_SET_MAC_ACL,
+    TRACE_CODE_HDD_CFG80211_TESTMODE,
+    TRACE_CODE_HDD_CFG80211_DUMP_SURVEY,
+    TRACE_CODE_HDD_CFG80211_SCHED_SCAN_START,
+    TRACE_CODE_HDD_CFG80211_SCHED_SCAN_STOP,
+    TRACE_CODE_HDD_CFG80211_DEL_PMKSA,
 };
 
 extern void hddTraceDump(void *pMac, tpvosTraceRecord pRecord, tANI_U16 recIndex);
 extern void hddTraceInit(void);
+void hdd_register_debug_callback(void);
+
 #endif
 
 

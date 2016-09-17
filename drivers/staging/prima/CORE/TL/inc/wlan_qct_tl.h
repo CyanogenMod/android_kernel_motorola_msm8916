@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -169,6 +169,12 @@ typedef enum
    */
   WLANTL_AC_HIGH_PRIO = 4
 }WLANTL_ACEnumType; 
+
+typedef struct
+{
+   v_MACADDR_t    selfMac;
+   v_MACADDR_t    spoofMac;
+}WLANTL_SpoofMacAddr;
 
 /*---------------------------------------------------------------------------
   STA Type
@@ -434,6 +440,7 @@ typedef struct
   v_BOOL_t  bMorePackets;
   /* notifying TL if this is an ARP frame or not */
   v_U8_t    ucIsArp;
+  v_U32_t   ucTxBdToken;
 }WLANTL_MetaInfoType;
 
 /*---------------------------------------------------------------------------
@@ -602,8 +609,8 @@ typedef tSap_SoftapStats WLANTL_TRANSFER_STA_TYPE;
 typedef enum
 {
   WLANTL_DEBUG_TX_SNAPSHOT = 1<<0,
-
   WLANTL_DEBUG_FW_CLEANUP = 1<<1,
+  WLANTL_DEBUG_KICKDXE = 1<<2
 }WLANTL_DebugFlags;
 
 /*----------------------------------------------------------------------------
@@ -684,6 +691,9 @@ typedef VOS_STATUS (*WLANTL_STAFetchPktCBType)(
                                             vos_pkt_t**           vosDataBuff,
                                             WLANTL_MetaInfoType*  tlMetaInfo);
 
+typedef VOS_STATUS (*WLANTL_MonRxCBType)( v_PVOID_t              pvosGCtx,
+                                          vos_pkt_t*             vosDataBuff,
+                                          int                    conversion);
 /*----------------------------------------------------------------------------
 
   DESCRIPTION   
@@ -1108,6 +1118,8 @@ WLANTL_ConfigureSwFrameTXXlationForAll
   v_BOOL_t enableFrameXlation
 );
 
+VOS_STATUS WLANTL_SetMonRxCbk(v_PVOID_t pvosGCtx, WLANTL_MonRxCBType pfnMonRx);
+void WLANTL_SetIsConversionReq(v_PVOID_t pvosGCtx, v_BOOL_t isConversionReq);
 /*===========================================================================
 
   FUNCTION    WLANTL_RegisterSTAClient
@@ -1824,6 +1836,42 @@ WLANTL_FlushStaTID
 
 /*==========================================================================
 
+  FUNCTION    WLANTL_updateSpoofMacAddr
+
+  DESCRIPTION
+    Called by HDD to update macaddr
+
+  DEPENDENCIES
+    TL must be initialized before this API can be called.
+
+  PARAMETERS
+
+    IN
+    pvosGCtx:           pointer to the global vos context; a handle to
+                        TL's control block can be extracted from its context
+    spoofMacAddr:     spoofed mac adderess
+    selfMacAddr:        self Mac Address
+
+  RETURN VALUE
+    The result code associated with performing the operation
+
+    VOS_STATUS_E_INVAL:  Input parameters are invalid
+    VOS_STATUS_E_FAULT:  pointer to TL cb is NULL ; access would cause a
+                         page fault
+    VOS_STATUS_SUCCESS:  Everything is good :)
+
+  SIDE EFFECTS
+
+============================================================================*/
+VOS_STATUS
+WLANTL_updateSpoofMacAddr
+(
+  v_PVOID_t               pvosGCtx,
+  v_MACADDR_t*            spoofMacAddr,
+  v_MACADDR_t*            selfMacAddr
+);
+/*==========================================================================
+
   FUNCTION    WLANTL_RegisterMgmtFrmClient
 
   DESCRIPTION 
@@ -1960,7 +2008,8 @@ WLANTL_TxMgmtFrm
   v_U8_t               tid,
   WLANTL_TxCompCBType  pfnCompTxFunc,
   v_PVOID_t            voosBDHeader,
-  v_U32_t              ucAckResponse
+  v_U32_t              ucAckResponse,
+  v_U32_t              ucTxBdToken
 );
 
 
@@ -2173,6 +2222,41 @@ WLANTL_GetRxPktCount
   v_U8_t         ucSTAId,
   v_U8_t         ucTid,
   v_U32_t*       puRxPktCount
+);
+
+/*==========================================================================
+
+  FUNCTION    WLANTL_IsEAPOLPending
+
+  DESCRIPTION
+
+    HDD calls this function when hdd_tx_timeout occurs. This checks whether
+    EAPOL is pending.
+
+  DEPENDENCIES
+
+    HDD must have registered with TL at least one STA before this function
+    can be called.
+
+  PARAMETERS
+
+    IN
+    pvosGCtx:       pointer to the global vos context
+
+  RETURN VALUE
+
+    The result code associated with performing the operation
+
+    Success : Indicates EAPOL frame is pending and sta is in connected state
+
+    Failure : EAPOL frame is not pending
+
+  SIDE EFFECTS
+============================================================================*/
+VOS_STATUS
+WLANTL_IsEAPOLPending
+(
+  v_PVOID_t     pvosGCtx
 );
 
 /*==========================================================================
@@ -2861,15 +2945,15 @@ void WLANTL_PostResNeeded(v_PVOID_t pvosGCtx);
 
   DESCRIPTION
      This function is used by HDD to notify TL to finish Upper layer authentication
-     incase the last EAPOL packet is pending in the TL queue. 
-     To avoid the race condition between sme set key and the last EAPOL packet 
+     incase the last EAPOL packet is pending in the TL queue.
+     To avoid the race condition between sme set key and the last EAPOL packet
      the HDD module calls this function just before calling the sme_RoamSetKey.
-   
+
   DEPENDENCIES
 
     TL must have been initialized before this gets called.
 
-   
+
   PARAMETERS
 
    callbackRoutine:   HDD Callback function.
@@ -2878,9 +2962,9 @@ void WLANTL_PostResNeeded(v_PVOID_t pvosGCtx);
   RETURN VALUE
 
    VOS_STATUS_SUCCESS/VOS_STATUS_FAILURE
-   
+
   SIDE EFFECTS
-   
+
 ============================================================================*/
 
 VOS_STATUS WLANTL_Finish_ULA( void (*callbackRoutine) (void *callbackContext),
@@ -3204,5 +3288,68 @@ WLANTL_FatalError
 (
  v_VOID_t
 );
+
+#ifdef WLAN_FEATURE_ROAM_SCAN_OFFLOAD
+void WLANTL_StartRxRateMonitor(v_PVOID_t pvosGCtx, wpt_uint8 staId,
+                  wpt_uint16 minRate,
+                  wpt_uint16 maxRate, wpt_uint8 minPercentage,
+                  wpt_uint16 minPktRequired, void *hHal,
+                  wpt_uint64 timeToWait,
+                  void (*triggerRoamScanfn) (void *, wpt_uint8));
+
+void WLANTL_StopRxRateMonitor(v_PVOID_t pvosGCtx);
+#endif
+#ifdef WLAN_FEATURE_RMC
+VOS_STATUS
+WLANTL_EnableRMC
+(
+    v_PVOID_t     pvosGCtx,
+    v_MACADDR_t   *pMcastAddr
+);
+
+
+VOS_STATUS
+WLANTL_DisableRMC
+(
+    v_PVOID_t     pvosGCtx,
+    v_MACADDR_t   *pMcastAddr
+);
+
+/*=============================================================================
+  FUNCTION    WLANTL_SetMcastDuplicateDetection
+
+  DESCRIPTION
+    This function sets multicate duplicate detection operation.
+    If enable is 1, the detection is enabled, else it is disabled.
+
+  DEPENDENCIES
+
+  PARAMETERS
+
+   IN
+
+   pvosGCtx   : Pointer to VOS global context
+   enable : Boolean to enable or disable
+
+  RETURN VALUE
+    The result code associated with performing the operation
+
+    VOS_STATUS_E_FAULT:   Sanity check on input failed
+
+    VOS_STATUS_SUCCESS:   Everything is good :)
+
+   Other return values are possible coming from the called functions.
+   Please check API for additional info.
+
+  SIDE EFFECTS
+
+==============================================================================*/
+VOS_STATUS
+WLANTL_SetMcastDuplicateDetection
+(
+    v_PVOID_t     pvosGCtx,
+    v_U8_t        enable
+);
+#endif /* WLAN_FEATURE_RMC */
 
 #endif /* #ifndef WLAN_QCT_WLANTL_H */

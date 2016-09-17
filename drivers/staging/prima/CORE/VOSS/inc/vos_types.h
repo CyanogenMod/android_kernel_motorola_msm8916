@@ -66,6 +66,9 @@
   (( ( ( (_x) << 24 ) & 0xFF000000 ) | ( ( (_x) >> 24 ) & 0x000000FF ) ) | \
    ( ( ( (_x) << 8 ) & 0x00FF0000 ) | ( ( (_x) >> 8 ) & 0x0000FF00 ) ))
 
+/* Length enough to include full DHCP/EAPOL/Management frame */
+#define MAX_PKT_STAT_DATA_LEN         800
+
 // Endian operations for Big Endian and Small Endian modes
 #ifdef ANI_LITTLE_BYTE_ENDIAN
 
@@ -105,8 +108,8 @@ typedef enum
    VOS_MODULE_ID_BAP        = 0,
    VOS_MODULE_ID_TL         = 1,
    VOS_MODULE_ID_WDI        = 2,
-   // 3 & 4 are unused for historical purposes
-   VOS_MODULE_ID_RSV3       = 3,
+   VOS_MODULE_ID_SVC        = 3,
+   // 4 is unused for historical purposes
    VOS_MODULE_ID_RSV4       = 4,
    VOS_MODULE_ID_HDD        = 5,
    VOS_MODULE_ID_SME        = 6,

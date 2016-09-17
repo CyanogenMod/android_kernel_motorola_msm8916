@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2013 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -229,10 +229,16 @@ limGetBssDescription( tpAniSirGlobal pMac, tSirBssDescription *pBssDescription,
 #endif
 #endif
 
-#ifdef FEATURE_WLAN_ESE
-    pBssDescription->QBSSLoad_present = limGetU16(pBuf);
-    pBuf += sizeof(tANI_U16);
-    len  -= sizeof(tANI_U16);
+#if defined(FEATURE_WLAN_ESE) || defined(WLAN_FEATURE_ROAM_SCAN_OFFLOAD)
+    /* Extract QBSSLoad_present */
+    pBssDescription->QBSSLoad_present = *pBuf++;
+    len  -= sizeof(tANI_U8);
+    if (limCheckRemainingLength(pMac, len) == eSIR_FAILURE)
+        return eSIR_FAILURE;
+
+    /* Extract QBSS_ChanLoad */
+    pBssDescription->QBSS_ChanLoad = *pBuf++;
+    len  -= sizeof(tANI_U8);
     if (limCheckRemainingLength(pMac, len) == eSIR_FAILURE)
         return eSIR_FAILURE;
 
@@ -277,9 +283,28 @@ limGetBssDescription( tpAniSirGlobal pMac, tSirBssDescription *pBssDescription,
         return eSIR_FAILURE;
     }
 
-    /* 1 reserved byte padding */
-    pBuf += (WSCIE_PROBE_RSP_LEN + 1);
-    len -= (WSCIE_PROBE_RSP_LEN + 1);
+    pBuf += (WSCIE_PROBE_RSP_LEN);
+    len -= (WSCIE_PROBE_RSP_LEN);
+
+    /* Extract HTCapsPresent */
+    pBssDescription->HTCapsPresent = *pBuf++;
+    len --;
+
+    /* Extract vhtCapsPresent */
+    pBssDescription->vhtCapsPresent = *pBuf++;
+    len --;
+
+    /* Extract wmeInfoPresent */
+    pBssDescription->wmeInfoPresent = *pBuf++;
+    len --;
+
+    /* Extract beacomformingCapable */
+    pBssDescription->beacomformingCapable = *pBuf++;
+    len --;
+
+    /* Extract chanWidth */
+    pBssDescription->chanWidth = *pBuf++;
+    len --;
 
     if (len > 0)
     {
@@ -739,6 +764,11 @@ limStartBssReqSerDes(tpAniSirGlobal pMac, tpSirSmeStartBssReq pStartBssReq, tANI
         len  -= pStartBssReq->extendedRateSet.numRates;
     }
 
+#ifdef WLAN_FEATURE_AP_HT40_24G
+    /* extract apHT40_24GEnabled */
+    pStartBssReq->apHT40_24GEnabled = *pBuf++;
+    len--;
+#endif
     if (len)
     {
         limLog(pMac, LOGW, FL("Extra bytes left in SME_START_BSS_REQ, len=%d"), len);
@@ -963,6 +993,22 @@ limJoinReqSerDes(tpAniSirGlobal pMac, tpSirSmeJoinReq pJoinReq, tANI_U8 *pBuf)
         return eSIR_FAILURE;
     }
 
+    pJoinReq->bOSENAssociation = *pBuf++;
+    len--;
+    if (limCheckRemainingLength(pMac, len) == eSIR_FAILURE)
+    {
+        limLog(pMac, LOGE, FL("remaining len %d is too short"), len);
+        return eSIR_FAILURE;
+    }
+
+    pJoinReq->bWPSAssociation = *pBuf++;
+    len--;
+    if (limCheckRemainingLength(pMac, len) == eSIR_FAILURE)
+    {
+         limLog(pMac, LOGE, FL("remaining len %d is too short"), len);
+         return eSIR_FAILURE;
+    }
+
     // Extract cbMode
     pJoinReq->cbMode = *pBuf++;
     len--;
@@ -1012,6 +1058,11 @@ limJoinReqSerDes(tpAniSirGlobal pMac, tpSirSmeJoinReq pJoinReq, tANI_U8 *pBuf)
             return eSIR_FAILURE;
         }
     }
+
+    //Extract rateBitMap
+    pJoinReq->rateBitMap = limGetU16(pBuf);
+    pBuf += sizeof(tANI_U16);
+    len -= sizeof(tANI_U16);
 
     // Extract RSN IE
     pJoinReq->rsnIE.length = limGetU16(pBuf);
@@ -1303,11 +1354,11 @@ limJoinReqSerDes(tpAniSirGlobal pMac, tpSirSmeJoinReq pJoinReq, tANI_U8 *pBuf)
     pBuf += pJoinReq->supportedChannels.numChnl;
     len-= pJoinReq->supportedChannels.numChnl;
 
-    PELOG2(limLog(pMac, LOG2,
+    limLog(pMac, LOG1,
             FL("spectrumInd ON: minPower %d, maxPower %d , numChnls %d"),
             pJoinReq->powerCap.minTxPower,
             pJoinReq->powerCap.maxTxPower,
-            pJoinReq->supportedChannels.numChnl);)
+            pJoinReq->supportedChannels.numChnl);
 
     // Extract uapsdPerAcBitmask
     pJoinReq->uapsdPerAcBitmask = *pBuf++;
@@ -1436,6 +1487,13 @@ limAssocIndSerDes(tpAniSirGlobal pMac, tpLimMlmAssocInd pAssocInd, tANI_U8 *pBuf
     limCopyU32(pBuf, pAssocInd->WmmStaInfoPresent);
     pBuf += sizeof(tANI_U32);
     mLen += sizeof(tANI_U32);
+
+#ifdef WLAN_FEATURE_AP_HT40_24G
+    limCopyU32(pBuf, pAssocInd->HT40MHzIntoPresent);
+    pBuf += sizeof(tANI_U32);
+    mLen += sizeof(tANI_U32);
+#endif
+
      // Fill in length of SME_ASSOC_IND message
     limCopyU16(pLen, mLen);
 
@@ -1575,7 +1633,9 @@ limDisassocCnfSerDes(tpAniSirGlobal pMac, tpSirSmeDisassocCnf pDisassocCnf, tANI
     pBuf += sizeof(tSirMacAddr);
 
     vos_mem_copy( pDisassocCnf->peerMacAddr, pBuf, sizeof(tSirMacAddr));
+    pBuf += sizeof(tSirMacAddr);
 
+    pDisassocCnf->assocId = limGetU16(pBuf);
 
     return eSIR_SUCCESS;
 } /*** end limDisassocCnfSerDes() ***/

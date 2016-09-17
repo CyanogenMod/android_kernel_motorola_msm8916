@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2013 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2013, 2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -38,9 +38,6 @@
   
   \brief Linux-specific definitions for VOSS trace
   
-   Copyright 2008 (c) Qualcomm, Incorporated.  All Rights Reserved.
-   
-   Qualcomm Confidential and Proprietary.
   
   ========================================================================*/
 
@@ -83,9 +80,6 @@ void vos_trace_display(void);
 
 void vos_trace_setValue( VOS_MODULE_ID module, VOS_TRACE_LEVEL level, v_U8_t on );
 
-//Begin Motorola dcw476 4/17/13 IKJBXLINE-5577:changing wlan driver log level dynamically
-void vos_trace_setValue_till_level( VOS_MODULE_ID module, VOS_TRACE_LEVEL level, v_U8_t on) ;
-//END IKJBXLINE-5577
 
 // VOS_TRACE is the macro invoked to add trace messages to code.  See the 
 // documenation for vos_trace_msg() for the parameters etc. for this function.
@@ -154,5 +148,7 @@ void __printf(3,4) vos_snprintf(char *strBuffer, unsigned  int size,
 #endif
 
 #define VOS_RETURN_ADDRESS  __builtin_return_address(0)
+
+#define VOS_SMP_MB smp_mb()
 
 #endif

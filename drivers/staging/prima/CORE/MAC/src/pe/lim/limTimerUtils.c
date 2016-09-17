@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2014 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2015 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -40,7 +40,7 @@
 #include "limAssocUtils.h"
 #include "limSecurityUtils.h"
 #include "pmmApi.h"
-
+#include "limApi.h"
 
 // default value 5000 ms for background scan period when it is disabled
 #define LIM_BACKGROUND_SCAN_PERIOD_DEFAULT_MS    5000
@@ -54,6 +54,8 @@
 #define LIM_KEEPALIVE_TIMER_MS                   3000
 // Lim JoinProbeRequest Retry  timer default (200)ms
 #define LIM_JOIN_PROBE_REQ_TIMER_MS              200
+#define LIM_AUTH_RETRY_TIMER_MS              60
+
 
 //default beacon interval value used in HB timer interval calculation
 #define LIM_HB_TIMER_BEACON_INTERVAL             100
@@ -257,7 +259,18 @@ limCreateTimers(tpAniSirGlobal pMac)
             limLog(pMac, LOGP, FL("could not create Periodic Join Probe Request timer"));
             goto err_timer;
         }
-
+        //Send Auth frame every 60 ms
+        if ((tx_timer_create(&pMac->lim.limTimers.gLimPeriodicAuthRetryTimer,
+                        "Periodic AUTH Timer",
+                        limTimerHandler, SIR_LIM_AUTH_RETRY_TIMEOUT,
+                        SYS_MS_TO_TICKS(LIM_AUTH_RETRY_TIMER_MS), 0,
+                        TX_NO_ACTIVATE)) != TX_SUCCESS)
+        {
+            /// Could not create Periodic Join Probe Request timer.
+            // Log error
+            limLog(pMac, LOGP, FL("could not create Periodic AUTH Timer timer"));
+            goto err_timer;
+        }
         if (wlan_cfgGetInt(pMac, WNI_CFG_ASSOCIATION_FAILURE_TIMEOUT,
                       &cfgValue) != eSIR_SUCCESS)
         {
@@ -455,39 +468,6 @@ limCreateTimers(tpAniSirGlobal pMac)
                FL("call to create background scan timer failed"));
             goto err_timer;
         }
-#ifdef FEATURE_WLAN_TDLS_INTERNAL
-        /*
-         * create TDLS timers..
-         * a) TDLS discovery response timer.
-         */
-
-        if (wlan_cfgGetInt(pMac, WNI_CFG_ASSOCIATION_FAILURE_TIMEOUT,
-                                            &cfgValue) != eSIR_SUCCESS)
-        {
-            /*
-             * Could not get discovery response Timeout value
-             * from CFG. Log error.
-             */
-            limLog(pMac, LOGP,
-               FL("could not retrieve ReassocFailureTimeout value"));
-        }
-        cfgValue = SYS_MS_TO_TICKS(cfgValue);
-
-        /*
-         * create TDLS discovery response wait timer and activate it later
-         */
-        if (tx_timer_create(&pMac->lim.limTimers.gLimTdlsDisRspWaitTimer,
-                            "TDLS discovery response WAIT",
-                            limTimerHandler,
-                            SIR_LIM_TDLS_DISCOVERY_RSP_WAIT,
-                            cfgValue, 0,
-                            TX_NO_ACTIVATE) != TX_SUCCESS)
-        {
-            limLog(pMac, LOGP,
-               FL("could not create TDLS discovery response wait timer"));
-        goto err_timer;
-        }
-#endif
     }
 
     /**
@@ -580,7 +560,7 @@ limCreateTimers(tpAniSirGlobal pMac)
                FL("could not retrieve mac preauth value"));
     }
     pMac->lim.gLimPreAuthTimerTable.numEntry = cfgValue;
-    pMac->lim.gLimPreAuthTimerTable.pTable = vos_mem_malloc(cfgValue*sizeof(tLimPreAuthNode));
+    pMac->lim.gLimPreAuthTimerTable.pTable = vos_mem_vmalloc(cfgValue*sizeof(tLimPreAuthNode));
     if(pMac->lim.gLimPreAuthTimerTable.pTable == NULL)
     {
         limLog(pMac, LOGP, FL("AllocateMemory failed!"));
@@ -697,17 +677,31 @@ limCreateTimers(tpAniSirGlobal pMac)
         goto err_timer;
     }
 
-    cfgValue = ACTIVE_TO_PASSIVE_CONVERISON_TIMEOUT;
-    cfgValue = SYS_MS_TO_TICKS(cfgValue);
-    if (tx_timer_create(&pMac->lim.limTimers.gLimActiveToPassiveChannelTimer,
+    cfgValue = WNI_CFG_ACTIVE_PASSIVE_CON_MAX;
+    if (eSIR_SUCCESS != wlan_cfgGetInt(pMac, WNI_CFG_ACTIVE_PASSIVE_CON,
+                                      &cfgValue))
+    {
+        limLog(pMac, LOGP,
+               FL("could not retrieve WNI_CFG_ACTIVE_PASSIVE_CON"));
+    }
+    if (cfgValue)
+    {
+        cfgValue = ACTIVE_TO_PASSIVE_CONVERISON_TIMEOUT;
+        cfgValue = SYS_MS_TO_TICKS(cfgValue);
+        if (tx_timer_create(&pMac->lim.limTimers.gLimActiveToPassiveChannelTimer,
                                   "ACTIVE TO PASSIVE CHANNEL", limTimerHandler,
                  SIR_LIM_CONVERT_ACTIVE_CHANNEL_TO_PASSIVE, cfgValue, 0,
                  TX_NO_ACTIVATE) != TX_SUCCESS)
-    {
-        limLog(pMac, LOGW,FL("could not create timer for passive channel to active channel"));
-        goto err_timer;
+        {
+            limLog(pMac, LOGW,FL("could not create timer for passive channel to active channel"));
+            goto err_timer;
+        }
     }
-
+    else
+    {
+        limLog(pMac, LOG1,
+               FL("gLimActiveToPassiveChannelTimer not created %d"), cfgValue);
+    }
 
     return TX_SUCCESS;
 
@@ -733,6 +727,7 @@ limCreateTimers(tpAniSirGlobal pMac)
         tx_timer_delete(&pMac->lim.limTimers.gLimAssocFailureTimer);
         tx_timer_delete(&pMac->lim.limTimers.gLimJoinFailureTimer);
         tx_timer_delete(&pMac->lim.limTimers.gLimPeriodicJoinProbeReqTimer);
+        tx_timer_delete(&pMac->lim.limTimers.gLimPeriodicAuthRetryTimer);
         tx_timer_delete(&pMac->lim.limTimers.gLimQuietBssTimer);
         tx_timer_delete(&pMac->lim.limTimers.gLimQuietTimer);
         tx_timer_delete(&pMac->lim.limTimers.gLimChannelSwitchTimer);
@@ -744,7 +739,7 @@ limCreateTimers(tpAniSirGlobal pMac)
 
         if(NULL != pMac->lim.gLimPreAuthTimerTable.pTable)
         {
-            vos_mem_free(pMac->lim.gLimPreAuthTimerTable.pTable);
+            vos_mem_vfree(pMac->lim.gLimPreAuthTimerTable.pTable);
             pMac->lim.gLimPreAuthTimerTable.pTable = NULL;
         }
 
@@ -793,7 +788,7 @@ limTimerHandler(void *pMacGlobal, tANI_U32 param)
     msg.bodyptr = NULL;
     msg.bodyval = 0;
 
-    if ((statusCode = limPostMsgApi(pMac, &msg)) != eSIR_SUCCESS)
+    if ((statusCode = limPostMsgApiHighPri(pMac, &msg)) != eSIR_SUCCESS)
         limLog(pMac, LOGE,
                FL("posting message %X to LIM failed, reason=%d"),
                msg.type, statusCode);
@@ -1008,8 +1003,7 @@ void
 limDeactivateAndChangeTimer(tpAniSirGlobal pMac, tANI_U32 timerId)
 {
     tANI_U32    val=0, val1=0;
-
-    MTRACE(macTrace(pMac, TRACE_CODE_TIMER_DEACTIVATE, NO_SESSION, timerId));
+    tpPESession  psessionEntry;
 
     switch (timerId)
     {
@@ -1137,12 +1131,23 @@ limDeactivateAndChangeTimer(tpAniSirGlobal pMac, tANI_U32 timerId)
                     break;
                 }
             }
-            if (tx_timer_change(&pMac->lim.limTimers.gLimPeriodicProbeReqTimer,
-                                val, 0) != TX_SUCCESS)
+            if (val)
             {
-                // Could not change min channel timer.
-                // Log error
-                limLog(pMac, LOGP, FL("Unable to change periodic timer"));
+                if (tx_timer_change(&pMac->lim.limTimers.gLimPeriodicProbeReqTimer,
+                                    val, 0) != TX_SUCCESS)
+                {
+                    // Could not change min channel timer.
+                    // Log error
+                    limLog(pMac, LOGE, FL("Unable to change periodic timer"));
+                }
+            }
+            else
+            {
+                limLog(pMac, LOGE, FL("Do not change gLimPeriodicProbeReqTimer values,"
+                       "value = %d minchannel time = %d"
+                       "maxchannel time = %d"), val,
+                       pMac->lim.gpLimMlmScanReq->minChannelTime,
+                       pMac->lim.gpLimMlmScanReq->maxChannelTime);
             }
 
             break;
@@ -1300,6 +1305,37 @@ limDeactivateAndChangeTimer(tpAniSirGlobal pMac, tANI_U32 timerId)
                 // Log error
                 limLog(pMac, LOGP,
                        FL("unable to change Auth failure timer"));
+            }
+
+            break;
+
+        case eLIM_AUTH_RETRY_TIMER:
+
+            if (tx_timer_deactivate(&pMac->lim.limTimers.gLimPeriodicAuthRetryTimer)
+                                         != TX_SUCCESS)
+            {
+                // Could not deactivate Auth Retry Timer.
+                limLog(pMac, LOGP,
+                       FL("Unable to deactivate Auth Retry timer"));
+            }
+            if ((psessionEntry = peFindSessionBySessionId(pMac,
+                pMac->lim.limTimers.gLimPeriodicAuthRetryTimer.sessionId))
+                                                                      == NULL)
+            {
+                   limLog(pMac, LOGP,
+                     FL("session does not exist for given SessionId : %d"),
+                     pMac->lim.limTimers.gLimPeriodicAuthRetryTimer.sessionId);
+                   break;
+            }
+            /* 3/5 of the beacon interval*/
+            val = psessionEntry->beaconParams.beaconInterval * 3/5;
+            val = SYS_MS_TO_TICKS(val);
+            if (tx_timer_change(&pMac->lim.limTimers.gLimPeriodicAuthRetryTimer,
+                                val, 0) != TX_SUCCESS)
+            {
+                // Could not change Auth Retry timer.
+                // Log error
+                limLog(pMac, LOGP, FL("Unable to change Auth Retry timer"));
             }
 
             break;
@@ -1802,7 +1838,6 @@ limHeartBeatDeactivateAndChangeTimer(tpAniSirGlobal pMac, tpPESession psessionEn
        return;
    }
 
-   MTRACE(macTrace(pMac, TRACE_CODE_TIMER_DEACTIVATE, psessionEntry->peSessionId, eLIM_HEART_BEAT_TIMER));
 #ifdef WLAN_ACTIVEMODE_OFFLOAD_FEATURE
    if(IS_ACTIVEMODE_OFFLOAD_FEATURE_ENABLE)
       return;
@@ -1876,7 +1911,6 @@ limReactivateHeartBeatTimer(tpAniSirGlobal pMac, tpPESession psessionEntry)
 #endif
 
     limHeartBeatDeactivateAndChangeTimer(pMac, psessionEntry);
-    MTRACE(macTrace(pMac, TRACE_CODE_TIMER_ACTIVATE, psessionEntry->peSessionId, eLIM_HEART_BEAT_TIMER));
 
     //only start the hearbeat-timer if the timeout value is non-zero
     if(pMac->lim.limTimers.gLimHeartBeatTimer.initScheduleTimeInMsecs > 0)
@@ -2020,7 +2054,6 @@ void
 limDeactivateAndChangePerStaIdTimer(tpAniSirGlobal pMac, tANI_U32 timerId, tANI_U16 staId)
 {
     tANI_U32    val;
-    MTRACE(macTrace(pMac, TRACE_CODE_TIMER_DEACTIVATE, NO_SESSION, timerId));
 
     switch (timerId)
     {
@@ -2131,7 +2164,6 @@ limDeactivateAndChangePerStaIdTimer(tpAniSirGlobal pMac, tANI_U32 timerId, tANI_
 
 void limActivateCnfTimer(tpAniSirGlobal pMac, tANI_U16 staId, tpPESession psessionEntry)
 {
-    MTRACE(macTrace(pMac, TRACE_CODE_TIMER_ACTIVATE, psessionEntry->peSessionId, eLIM_CNF_WAIT_TIMER));
     pMac->lim.limTimers.gpLimCnfWaitTimer[staId].sessionId = psessionEntry->peSessionId;
     if (tx_timer_activate(&pMac->lim.limTimers.gpLimCnfWaitTimer[staId])
                 != TX_SUCCESS)
@@ -2163,7 +2195,6 @@ void limActivateCnfTimer(tpAniSirGlobal pMac, tANI_U16 staId, tpPESession psessi
 
 void limActivateAuthRspTimer(tpAniSirGlobal pMac, tLimPreAuthNode *pAuthNode)
 {
-    MTRACE(macTrace(pMac, TRACE_CODE_TIMER_ACTIVATE, NO_SESSION, eLIM_AUTH_RESP_TIMER));
     if (tx_timer_activate(&pAuthNode->timer) != TX_SUCCESS)
     {
         /// Could not activate auth rsp timer.
@@ -2250,8 +2281,8 @@ limChannelSwitchTimerHandler(void *pMacGlobal, tANI_U32 param)
     tSirMsgQ    msg;
     tpAniSirGlobal pMac = (tpAniSirGlobal)pMacGlobal;
 
-    PELOG1(limLog(pMac, LOG1,
-        FL("ChannelSwitch Timer expired.  Posting msg to LIM "));)
+    limLog(pMac, LOG1,
+        FL("ChannelSwitch Timer expired.  Posting msg to LIM "));
 
     msg.type = SIR_LIM_CHANNEL_SWITCH_TIMEOUT;
     msg.bodyval = (tANI_U32)param;
@@ -2270,8 +2301,8 @@ limQuietTimerHandler(void *pMacGlobal, tANI_U32 param)
     msg.bodyval = (tANI_U32)param;
     msg.bodyptr = NULL;
 
-    PELOG1(limLog(pMac, LOG1,
-        FL("Post SIR_LIM_QUIET_TIMEOUT msg. "));)
+    limLog(pMac, LOG1,
+        FL("Post SIR_LIM_QUIET_TIMEOUT msg. "));
     limPostMsgApi(pMac, &msg);
 }
 
@@ -2284,8 +2315,8 @@ limQuietBssTimerHandler(void *pMacGlobal, tANI_U32 param)
     msg.type = SIR_LIM_QUIET_BSS_TIMEOUT;
     msg.bodyval = (tANI_U32)param;
     msg.bodyptr = NULL;
-    PELOG1(limLog(pMac, LOG1,
-        FL("Post SIR_LIM_QUIET_BSS_TIMEOUT msg. "));)
+    limLog(pMac, LOG1,
+        FL("Post SIR_LIM_QUIET_BSS_TIMEOUT msg. "));
     limPostMsgApi(pMac, &msg);
 }
 #if 0

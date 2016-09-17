@@ -36,9 +36,6 @@
   Are listed for each API below. 
   
   
-  Copyright (c) 2008 QUALCOMM Incorporated.
-  All Rights Reserved.
-  Qualcomm Confidential and Proprietary
 ===========================================================================*/
 
 /*===========================================================================
@@ -380,12 +377,12 @@ void WLANTL_HSDebugDisplay
    {
       if(VOS_TRUE == tlCtxt->isBMPS)
       {
-         TLLOGE(VOS_TRACE(VOS_MODULE_ID_TL, VOS_TRACE_LEVEL_ERROR," ----> CRegion %d, hRSSI:NA, BMPS, Alpha %d",
+         TLLOGE(VOS_TRACE(VOS_MODULE_ID_TL, VOS_TRACE_LEVEL_INFO," ----> CRegion %d, hRSSI:NA, BMPS, Alpha %d",
                       currentHO->regionNumber, currentHO->alpha));
       }
       else
       {
-         TLLOGE(VOS_TRACE(VOS_MODULE_ID_TL, VOS_TRACE_LEVEL_ERROR," ----> CRegion %d, hRSSI %d, Alpha %d",
+         TLLOGE(VOS_TRACE(VOS_MODULE_ID_TL, VOS_TRACE_LEVEL_INFO," ----> CRegion %d, hRSSI %d, Alpha %d",
                       currentHO->regionNumber,
                       currentHO->historyRSSI,
                       currentHO->alpha));
@@ -1316,6 +1313,15 @@ VOS_STATUS WLANTL_HSHandleRXFrame
       (WLANTL_MGMT_FRAME_TYPE != frameType))
    {
       tid = WDA_GET_RX_TID( pBDHeader );
+
+      /* If AP uses TID greater than 8 for EAPOL packet connection will not
+         be established. To ensure no connection fail use TID as zero.*/
+      if (WLANTL_TID_INVALID(tid)) {
+         VOS_TRACE( VOS_MODULE_ID_TL, VOS_TRACE_LEVEL_INFO,
+             "WLAN TL:Invalid Tid: %d", tid);
+         tid = 0;
+      }
+
       ac = WLANTL_HO_TID_2_AC[(v_U8_t)tid];
 
       /* Only Voice traffic is handled as real time traffic */

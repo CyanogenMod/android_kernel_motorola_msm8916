@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2013 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -61,9 +61,17 @@
 #define ANI_DRIVER_MSG_START         0x0001
 #define ANI_MSG_APP_REG_REQ         (ANI_DRIVER_MSG_START + 0)
 #define ANI_MSG_APP_REG_RSP         (ANI_DRIVER_MSG_START + 1)
+#define ANI_MSG_OEM_DATA_REQ        (ANI_DRIVER_MSG_START + 2)
+#define ANI_MSG_OEM_DATA_RSP        (ANI_DRIVER_MSG_START + 3)
+#define ANI_MSG_CHANNEL_INFO_REQ    (ANI_DRIVER_MSG_START + 4)
+#define ANI_MSG_CHANNEL_INFO_RSP    (ANI_DRIVER_MSG_START + 5)
+#define ANI_MSG_OEM_ERROR           (ANI_DRIVER_MSG_START + 6)
+
 #define ANI_MAX_RADIOS      3
 #define ANI_NL_MSG_OK       0
 #define ANI_NL_MSG_ERROR    -1
+#define INVALID_PID         -1
+
 #define ANI_NL_MSG_OVERHEAD (NLMSG_SPACE(tAniHdr + 4))
 /*
  * Packet Format for READ_REGISTER & WRITE_REGISTER:
@@ -87,6 +95,7 @@
  * Payload     : LEN_PAYLOAD bytes
 */
 int ptt_sock_activate_svc(void *pAdapter);
+int ptt_sock_deactivate_svc(hdd_context_t *pHddCtx);
 int ptt_sock_send_msg_to_app(tAniHdr *wmsg, int radio, int src_mod, int pid, int flag);
 
 /*
@@ -99,6 +108,12 @@ typedef struct sAniNlMsg {
     int radio;                        // unit number of the radio
     tAniHdr wmsg;                     // Airgo Message Header
 } tAniNlHdr;
+typedef struct sAniNlMgmtLogMsg {
+    struct  nlmsghdr nlh;
+    int radio;
+    tAniHdr wmsg;
+    uint32 frameSize;
+} tAniNlLogHdr;
 typedef struct sAniAppRegReq {
     tAniNlModTypes type;              // module id
     int pid;                          // process id
