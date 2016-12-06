@@ -611,15 +611,29 @@ typedef enum
 #define CFG_ACTIVE_MIN_CHANNEL_TIME_MAX        ( 10000 )
 #define CFG_ACTIVE_MIN_CHANNEL_TIME_DEFAULT    ( 30 )
 
+/* Max Dwell time during BTC eSCO call in msec*/
 #define CFG_ACTIVE_MAX_CHANNEL_TIME_BTC_NAME       "gActiveMaxChannelTimeBtc"
 #define CFG_ACTIVE_MAX_CHANNEL_TIME_BTC_MIN        ( 0 )
 #define CFG_ACTIVE_MAX_CHANNEL_TIME_BTC_MAX        ( 10000 )
 #define CFG_ACTIVE_MAX_CHANNEL_TIME_BTC_DEFAULT    ( 120 )
 
+/* Min Dwell time during BTC eSCO call in msec*/
 #define CFG_ACTIVE_MIN_CHANNEL_TIME_BTC_NAME       "gActiveMinChannelTimeBtc"
 #define CFG_ACTIVE_MIN_CHANNEL_TIME_BTC_MIN        ( 0 )
 #define CFG_ACTIVE_MIN_CHANNEL_TIME_BTC_MAX        ( 10000 )
 #define CFG_ACTIVE_MIN_CHANNEL_TIME_BTC_DEFAULT    ( 60 )
+
+/* Min Dwell time during BTC SCO call in msec*/
+#define CFG_ACTIVE_MIN_CHANNEL_TIME_BTC_SCO_NAME    "gActiveMinChannelTimeBtcSCO"
+#define CFG_ACTIVE_MIN_CHANNEL_TIME_BTC_SCO_MIN     (0)
+#define CFG_ACTIVE_MIN_CHANNEL_TIME_BTC_SCO_MAX     (10000)
+#define CFG_ACTIVE_MIN_CHANNEL_TIME_BTC_SCO_DEFAULT (20)
+
+/* Max Dwell time during BTC SCO call in msec*/
+#define CFG_ACTIVE_MAX_CHANNEL_TIME_BTC_SCO_NAME    "gActiveMaxChannelTimeBtcSCO"
+#define CFG_ACTIVE_MAX_CHANNEL_TIME_BTC_SCO_MIN     (0)
+#define CFG_ACTIVE_MAX_CHANNEL_TIME_BTC_SCO_MAX     (10000)
+#define CFG_ACTIVE_MAX_CHANNEL_TIME_BTC_SCO_DEFAULT (40)
 
 #define CFG_RETRY_LIMIT_ZERO_NAME       "gRetryLimitZero"
 #define CFG_RETRY_LIMIT_ZERO_MIN        ( 0 )
@@ -917,7 +931,7 @@ typedef enum
  * Max: Max rate for 1x1 transmission
  */
 #define CFG_PER_ROAM_SCAN_RATE_UP_THRESHOLD           "gPERRoamUpThresholdRate"
-#define CFG_PER_ROAM_SCAN_RATE_UP_THRESHOLD_MIN       (10)
+#define CFG_PER_ROAM_SCAN_RATE_UP_THRESHOLD_MIN       (20)
 #define CFG_PER_ROAM_SCAN_RATE_UP_THRESHOLD_MAX       (3330)
 #define CFG_PER_ROAM_SCAN_RATE_UP_THRESHOLD_DEFAULT   (400)
 
@@ -936,13 +950,13 @@ typedef enum
  * Value : seconds
  */
 #define CFG_PER_ROAM_SCAN_WAIT_TIME                   "gPERRoamScanInterval"
-#define CFG_PER_ROAM_SCAN_WAIT_TIME_MIN               (0)
+#define CFG_PER_ROAM_SCAN_WAIT_TIME_MIN               (10)
 #define CFG_PER_ROAM_SCAN_WAIT_TIME_MAX               (3600)
 #define CFG_PER_ROAM_SCAN_WAIT_TIME_DEFAULT           (300)
 
 /* Time to collect stats to trigger roam scan for Tx path */
 #define CFG_PER_ROAM_SCAN_PER_TIME_THRESHOLD          "gPERRoamStatsTime"
-#define CFG_PER_ROAM_SCAN_PER_TIME_THRESHOLD_MIN      (0)
+#define CFG_PER_ROAM_SCAN_PER_TIME_THRESHOLD_MIN      (5)
 #define CFG_PER_ROAM_SCAN_PER_TIME_THRESHOLD_MAX      (25)
 #define CFG_PER_ROAM_SCAN_PER_TIME_THRESHOLD_DEFAULT  (10)
 
@@ -975,6 +989,11 @@ typedef enum
 #define CFG_PER_ROAM_SCAN_CCA_ENABLED_MIN             (0)
 #define CFG_PER_ROAM_SCAN_CCA_ENABLED_MAX             (1)
 #define CFG_PER_ROAM_SCAN_CCA_ENABLED_DEFAULT         (0)
+
+#define CFG_PER_ROAM_FULL_SCAN_RSSI_THRESHOLD         "gPERRoamFullScanRssiDiffThreshold"
+#define CFG_PER_ROAM_FULL_SCAN_RSSI_THRESHOLD_MIN     (5)
+#define CFG_PER_ROAM_FULL_SCAN_RSSI_THRESHOLD_MAX     (50)
+#define CFG_PER_ROAM_FULL_SCAN_RSSI_THRESHOLD_DEFAULT (10)
 #endif
 
 #define CFG_QOS_WMM_PKT_CLASSIFY_BASIS_NAME                "PktClassificationBasis" // DSCP or 802.1Q
@@ -2992,8 +3011,10 @@ typedef struct
 
    v_U32_t        nInitialDwellTime;     //in units of milliseconds
 
-   v_U32_t        nActiveMinChnTimeBtc;     //in units of milliseconds
-   v_U32_t        nActiveMaxChnTimeBtc;     //in units of milliseconds
+   uint32_t       min_chntime_btc_esco;     //in units of milliseconds
+   uint32_t       max_chntime_btc_esco;     //in units of milliseconds
+   uint32_t       min_chntime_btc_sco;
+   uint32_t       max_chntime_btc_sco;
 #ifdef WLAN_AP_STA_CONCURRENCY
    v_U32_t        nPassiveMinChnTimeConc;    //in units of milliseconds
    v_U32_t        nPassiveMaxChnTimeConc;    //in units of milliseconds
@@ -3053,6 +3074,7 @@ typedef struct
    v_BOOL_t                     isPERRoamEnabled;
    v_BOOL_t                     isPERRoamRxPathEnabled;
    v_BOOL_t                     isPERRoamCCAEnabled;
+   v_S15_t                      PERRoamFullScanThreshold;
    v_U16_t                      rateUpThreshold;
    v_U16_t                      rateDownThreshold;
    v_U16_t                      PERroamTriggerPercent;
