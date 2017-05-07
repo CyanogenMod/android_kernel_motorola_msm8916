@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2016 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2017 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -102,6 +102,14 @@
 
 #define MAX_CHANNEL NUM_2_4GHZ_CHANNELS + NUM_5GHZ_CHANNELS
 
+#define IS_CHANNEL_VALID(channel) ((channel >= 0 && channel < 15) \
+                     || (channel >= 36 && channel <= 184))
+
+#ifdef WLAN_FEATURE_LINK_LAYER_STATS
+/* Number of Radios */
+#define NUM_RADIOS  0x1
+#endif /* WLAN_FEATURE_LINK_LAYER_STATS */
+
 typedef struct {
    u8 element_id;
    u8 len;
@@ -189,6 +197,11 @@ enum qca_nl80211_vendor_subcmds {
     QCA_NL80211_VENDOR_SUBCMD_LINK_PROPERTIES = 101,
 
     QCA_NL80211_VENDOR_SUBCMD_SETBAND = 105,
+
+    /* Start / Stop the NUD stats collections */
+    QCA_NL80211_VENDOR_SUBCMD_NUD_STATS_SET = 149,
+    /* Get the NUD stats, represented by the enum qca_attr_nud_stats_get */
+    QCA_NL80211_VENDOR_SUBCMD_NUD_STATS_GET = 150,
 };
 
 enum qca_nl80211_vendor_subcmds_index {
@@ -224,6 +237,63 @@ enum qca_nl80211_vendor_subcmds_index {
 
     QCA_NL80211_VENDOR_SUBCMD_MONITOR_RSSI_INDEX,
     QCA_NL80211_VENDOR_SUBCMD_EXTSCAN_HOTLIST_AP_LOST_INDEX,
+    QCA_NL80211_VENDOR_SUBCMD_NUD_STATS_GET_INDEX,
+};
+
+/**
+ * qca_wlan_vendor_attr_nud_stats_set: attribute to vendor subcmd
+ * QCA_NL80211_VENDOR_SUBCMD_NUD_STATS_SET. This carry the requisite
+ * information to start / stop the NUD stats collection.
+ */
+enum qca_attr_nud_stats_set {
+    QCA_ATTR_NUD_STATS_SET_INVALID = 0,
+
+    /* Flag to Start / Stop the NUD stats collection
+     * Start - If included , Stop - If not included
+     */
+    QCA_ATTR_NUD_STATS_SET_START = 1,
+    /* IPv4 address of Default Gateway (in network byte order) */
+    QCA_ATTR_NUD_STATS_GW_IPV4 = 2,
+
+    /* keep last */
+    QCA_ATTR_NUD_STATS_SET_LAST,
+    QCA_ATTR_NUD_STATS_SET_MAX =
+            QCA_ATTR_NUD_STATS_SET_LAST - 1,
+};
+
+/**
+ * qca_attr_nud_stats_get: attribute to vendor subcmd
+ * QCA_NL80211_VENDOR_SUBCMD_NUD_STATS_GET. This carry the requisite
+ * NUD stats collected when queried.
+ */
+enum qca_attr_nud_stats_get {
+    QCA_ATTR_NUD_STATS_GET_INVALID = 0,
+    /* ARP Request Count from net dev */
+    QCA_ATTR_NUD_STATS_ARP_REQ_COUNT_FROM_NETDEV = 1,
+    /* ARP Request Count sent to lower MAC from upper MAC */
+    QCA_ATTR_NUD_STATS_ARP_REQ_COUNT_TO_LOWER_MAC = 2,
+    /* ARP Request Count received by lower MAC from upper MAC */
+    QCA_ATTR_NUD_STATS_ARP_REQ_RX_COUNT_BY_LOWER_MAC = 3,
+    /* ARP Request Count successfully transmitted by the device */
+    QCA_ATTR_NUD_STATS_ARP_REQ_COUNT_TX_SUCCESS = 4,
+    /* ARP Response Count received by lower MAC */
+    QCA_ATTR_NUD_STATS_ARP_RSP_RX_COUNT_BY_LOWER_MAC = 5,
+    /* ARP Response Count received by upper MAC */
+    QCA_ATTR_NUD_STATS_ARP_RSP_RX_COUNT_BY_UPPER_MAC = 6,
+    /* ARP Response Count delivered to netdev */
+    QCA_ATTR_NUD_STATS_ARP_RSP_COUNT_TO_NETDEV = 7,
+    /* ARP Response Count delivered to netdev */
+    QCA_ATTR_NUD_STATS_ARP_RSP_COUNT_OUT_OF_ORDER_DROP = 8,
+    /*
+     * Flag indicating if the Stations Link to AP is active.
+     * Active Link - If exists, Inactive link - If not included
+     */
+    QCA_ATTR_NUD_STATS_AP_LINK_ACTIVE= 9,
+    QCA_ATTR_NUD_STATS_AP_LINK_DAD= 10,
+     /* keep last */
+    QCA_ATTR_NUD_STATS_GET_LAST,
+    QCA_ATTR_NUD_STATS_GET_MAX =
+            QCA_ATTR_NUD_STATS_GET_LAST - 1,
 };
 
 enum qca_wlan_vendor_attr
@@ -1430,4 +1500,19 @@ struct cfg80211_bss* wlan_hdd_cfg80211_update_bss_list(
 
 struct cfg80211_bss *wlan_hdd_cfg80211_inform_bss_frame(hdd_adapter_t *pAdapter,
 		tSirBssDescription *bss_desc);
+#ifdef CFG80211_DEL_STA_V2
+int wlan_hdd_cfg80211_del_station(struct wiphy *wiphy,
+                                  struct net_device *dev,
+                                  struct station_del_parameters *param);
+#else
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,16,0)) || defined(WITH_BACKPORTS)
+int wlan_hdd_cfg80211_del_station(struct wiphy *wiphy,
+                                  struct net_device *dev, const u8 *mac);
+#else
+int wlan_hdd_cfg80211_del_station(struct wiphy *wiphy,
+                                  struct net_device *dev, u8 *mac);
+#endif
+#endif
+
+int wlan_hdd_cfg80211_update_apies(hdd_adapter_t *pHostapdAdapter);
 #endif

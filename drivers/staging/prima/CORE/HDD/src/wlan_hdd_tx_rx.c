@@ -793,7 +793,7 @@ void hdd_dump_dhcp_pkt(struct sk_buff *skb, int path)
  }
 
 /**============================================================================
-  @brief hdd_hard_start_xmit() - Function registered with the Linux OS for
+  @brief __hdd_hard_start_xmit() - Function registered with the Linux OS for
   transmitting packets. There are 2 versions of this function. One that uses
   locked queue and other that uses lockless queues. Both have been retained to
   do some performance testing
@@ -804,7 +804,7 @@ void hdd_dump_dhcp_pkt(struct sk_buff *skb, int path)
   @return         : NET_XMIT_DROP if packets are dropped
                   : NET_XMIT_SUCCESS if packet is enqueued succesfully
   ===========================================================================*/
-int hdd_hard_start_xmit(struct sk_buff *skb, struct net_device *dev)
+int __hdd_hard_start_xmit(struct sk_buff *skb, struct net_device *dev)
 {
    VOS_STATUS status;
    WLANTL_ACEnumType qid, ac;
@@ -819,6 +819,7 @@ int hdd_hard_start_xmit(struct sk_buff *skb, struct net_device *dev)
    hdd_context_t *pHddCtx = WLAN_HDD_GET_CTX(pAdapter);
    v_BOOL_t txSuspended = VOS_FALSE;
    struct sk_buff *skb1;
+   v_BOOL_t arp_pkt;
 
    if (NULL == pHddCtx) {
        VOS_TRACE( VOS_MODULE_ID_HDD_DATA, VOS_TRACE_LEVEL_ERROR,
@@ -833,6 +834,17 @@ int hdd_hard_start_xmit(struct sk_buff *skb, struct net_device *dev)
                   "%s is called when netif TX %d is disabled",
                   __func__, skb->queue_mapping);
        return NETDEV_TX_BUSY;
+   }
+
+   arp_pkt = vos_is_arp_pkt(skb, false);
+
+   if (arp_pkt)
+   {
+      if (pHddCtx->track_arp_ip && vos_check_arp_req_target_ip(skb, false)) {
+         ++pAdapter->hdd_stats.hddArpStats.tx_arp_req_count;
+         VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_INFO,
+                   "%s :ARP packet received form net_dev", __func__);
+      }
    }
 
    //Get TL Q index corresponding to Qdisc queue index/AC.
@@ -852,6 +864,15 @@ int hdd_hard_start_xmit(struct sk_buff *skb, struct net_device *dev)
          VOS_TRACE( VOS_MODULE_ID_HDD_DATA, VOS_TRACE_LEVEL_INFO,
                 FL("Tx frame in not associated state in %d context"),
                     pAdapter->device_mode);
+
+         if (arp_pkt)
+         {
+            ++pAdapter->hdd_stats.hddArpStats.txDropped;
+            pAdapter->hdd_stats.hddArpStats.reason = HDD_TX_FRAME_IN_NOT_ASSOCIATED_STATE;
+            VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_ERROR,
+            "%s :Tx frame in not associated state, ARP packet Dropped ",
+            __func__);
+         }
          ++pAdapter->stats.tx_dropped;
          ++pAdapter->hdd_stats.hddTxRxStats.txXmitDropped;
          ++pAdapter->hdd_stats.hddTxRxStats.txXmitDroppedAC[qid];
@@ -895,6 +916,15 @@ int hdd_hard_start_xmit(struct sk_buff *skb, struct net_device *dev)
          VOS_TRACE( VOS_MODULE_ID_HDD_DATA, VOS_TRACE_LEVEL_ERROR,
                     "%s: WLANTL_STAPktPending() returned error code %d",
                     __func__, status);
+
+         if (arp_pkt)
+         {
+            ++pAdapter->hdd_stats.hddArpStats.txDropped;
+            pAdapter->hdd_stats.hddArpStats.reason = HDD_WLANTL_STAPKTPENDING_RETURNED_ERROR_CODE;
+            VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_ERROR,
+            "%s:ARP Packet Dropped WLANTL_STAPktPending returned error %d",
+            __func__, status);
+         }
          ++pAdapter->stats.tx_dropped;
          ++pAdapter->hdd_stats.hddTxRxStats.txXmitDropped;
          ++pAdapter->hdd_stats.hddTxRxStats.txXmitDroppedAC[qid];
@@ -966,6 +996,14 @@ int hdd_hard_start_xmit(struct sk_buff *skb, struct net_device *dev)
    if ( !VOS_IS_STATUS_SUCCESS( status ) )
    {
       VOS_TRACE( VOS_MODULE_ID_HDD_DATA, VOS_TRACE_LEVEL_WARN,"%s:Insert Tx queue failed. Pkt dropped", __func__);
+
+      if (arp_pkt)
+      {
+          ++pAdapter->hdd_stats.hddArpStats.txDropped;
+          pAdapter->hdd_stats.hddArpStats.reason = HDD_INSERT_TX_QUEUE_FAILED;
+          VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_ERROR,
+                    "%s:Insert Tx queue failed. ARP packet dropped", __func__);
+      }
       ++pAdapter->hdd_stats.hddTxRxStats.txXmitDropped;
       ++pAdapter->hdd_stats.hddTxRxStats.txXmitDroppedAC[qid];
       ++pAdapter->stats.tx_dropped;
@@ -1027,6 +1065,15 @@ int hdd_hard_start_xmit(struct sk_buff *skb, struct net_device *dev)
             skb1 = pktNode->skb;
             kfree_skb(skb1);
          }
+
+         if (arp_pkt)
+         {
+           ++pAdapter->hdd_stats.hddArpStats.txDropped;
+           pAdapter->hdd_stats.hddArpStats.reason = HDD_FAILED_TO_SIGNAL_TL;
+           VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_ERROR,
+           "%s: ARP packet Dropped : Failed to signal TL for QId=%d",
+           __func__, qid );
+         }
          ++pAdapter->stats.tx_dropped;
          ++pAdapter->hdd_stats.hddTxRxStats.txXmitDropped;
          ++pAdapter->hdd_stats.hddTxRxStats.txXmitDroppedAC[qid];
@@ -1037,6 +1084,15 @@ int hdd_hard_start_xmit(struct sk_buff *skb, struct net_device *dev)
    dev->trans_start = jiffies;
 
    return NETDEV_TX_OK;
+}
+
+int hdd_hard_start_xmit(struct sk_buff *skb, struct net_device *dev)
+{
+	int ret;
+	vos_ssr_protect(__func__);
+	ret = __hdd_hard_start_xmit(skb, dev);
+	vos_ssr_unprotect(__func__);
+	return ret;
 }
 
 /**============================================================================
@@ -1929,6 +1985,7 @@ VOS_STATUS hdd_tx_fetch_packet_cbk( v_VOID_t *vosContext,
    tANI_U8   acAdmitted, i;
    v_U8_t proto_type = 0;
    WLANTL_ACEnumType actualAC;
+   v_BOOL_t arp_pkt;
 
    //Sanity check on inputs
    if ( ( NULL == vosContext ) || 
@@ -2066,10 +2123,20 @@ VOS_STATUS hdd_tx_fetch_packet_cbk( v_VOID_t *vosContext,
       vos_pkt_return_packet(pVosPacket);
       return VOS_STATUS_E_FAILURE;
    }
+   arp_pkt = vos_is_arp_pkt(skb, false);
    //Attach skb to VOS packet.
    status = vos_pkt_set_os_packet( pVosPacket, skb );
    if (status != VOS_STATUS_SUCCESS)
    {
+
+      if (arp_pkt)
+      {
+          ++pAdapter->hdd_stats.hddArpStats.txDropped;
+          pAdapter->hdd_stats.hddArpStats.reason = HDD_ERROR_ATTACHING_SKB;
+          VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_ERROR,
+                 "%s :Error attaching skb,ARP packet droped", __func__);
+      }
+
       VOS_TRACE( VOS_MODULE_ID_HDD_DATA, VOS_TRACE_LEVEL_WARN,"%s: Error attaching skb", __func__);
       vos_pkt_return_packet(pVosPacket);
       ++pAdapter->stats.tx_dropped;
@@ -2081,6 +2148,16 @@ VOS_STATUS hdd_tx_fetch_packet_cbk( v_VOID_t *vosContext,
    //Just being paranoid. To be removed later
    if(pVosPacket == NULL)
    {
+
+      if (arp_pkt)
+      {
+          ++pAdapter->hdd_stats.hddArpStats.txDropped;
+          pAdapter->hdd_stats.hddArpStats.reason = HDD_VOS_PACKET_RETURNED_BY_VOSS_IS_NULL;
+          VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_INFO,
+          "%s :VOS packet returned by VOSS is NULL,ARP packet droped",
+          __func__);
+      }
+
       VOS_TRACE( VOS_MODULE_ID_HDD_DATA, VOS_TRACE_LEVEL_WARN,"%s: VOS packet returned by VOSS is NULL", __func__);
       ++pAdapter->stats.tx_dropped;
       ++pAdapter->hdd_stats.hddTxRxStats.txFetchDequeueError;
@@ -2138,6 +2215,12 @@ VOS_STATUS hdd_tx_fetch_packet_cbk( v_VOID_t *vosContext,
    vos_pkt_get_packet_length( pVosPacket,&packet_size );
    if( HDD_ETHERTYPE_ARP_SIZE == packet_size )
       pPktMetaInfo->ucIsArp = hdd_IsARP( pVosPacket ) ? 1 : 0;
+
+   if(pPktMetaInfo->ucIsArp)
+   {
+      VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_INFO,
+                 "%s :STA TX ARP Received in TL ",__func__);
+   }
 
 #ifdef FEATURE_WLAN_WAPI
    // Override usIsEapol value when its zero for WAPI case
@@ -2534,6 +2617,40 @@ VOS_STATUS  hdd_rx_packet_monitor_cbk(v_VOID_t *vosContext,vos_pkt_t *pVosPacket
 return status;
 }
 
+bool hdd_is_duplicate_ip_arp(struct sk_buff *skb)
+{
+   struct in_ifaddr **ifap = NULL;
+   struct in_ifaddr *ifa = NULL;
+   struct in_device *in_dev;
+   uint32_t arp_ip,if_ip;
+
+   if (NULL == skb)
+      return false;
+
+   arp_ip = hdd_get_arp_src_ip(skb);
+
+   if(!skb->dev) return false;
+
+   in_dev = __in_dev_get_rtnl(skb->dev);
+
+   if (in_dev) {
+      for (ifap = &in_dev->ifa_list; (ifa = *ifap) != NULL;
+           ifap = &ifa->ifa_next) {
+         if (!strcmp(skb->dev->name, ifa->ifa_label))
+            break;
+      }
+   }
+   if (ifa && ifa->ifa_local) {
+
+        if_ip = ntohl(ifa->ifa_local);
+        if (if_ip == arp_ip) {
+         return true;
+        }
+   }
+
+   return false;
+}
+
 /**============================================================================
   @brief hdd_rx_packet_cbk() - Receive callback registered with TL.
   TL will call this to notify the HDD when one or more packets were
@@ -2560,6 +2677,8 @@ VOS_STATUS hdd_rx_packet_cbk( v_VOID_t *vosContext,
    vos_pkt_t* pVosPacket;
    vos_pkt_t* pNextVosPacket;
    v_U8_t proto_type;
+   v_BOOL_t arp_pkt;
+   bool track_arp_resp = false;
 
    //Sanity check on inputs
    if ( ( NULL == vosContext ) || 
@@ -2600,6 +2719,14 @@ VOS_STATUS hdd_rx_packet_cbk( v_VOID_t *vosContext,
       // both "success" and "empty" are acceptable results
       if (!((status == VOS_STATUS_SUCCESS) || (status == VOS_STATUS_E_EMPTY)))
       {
+
+        if(hdd_IsARP(pVosPacket))
+        {
+            ++pAdapter->hdd_stats.hddArpStats.rxDropped;
+            pAdapter->hdd_stats.hddArpStats.reason = HDD_FAILURE_WALKING_PACKET_CHAIN;
+            VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_ERROR,
+            "%s: ARP packet Drop: Failure walking packet chain", __func__);
+        }
          ++pAdapter->hdd_stats.hddTxRxStats.rxDropped;
          VOS_TRACE( VOS_MODULE_ID_HDD_DATA, VOS_TRACE_LEVEL_ERROR,
                          "%s: Failure walking packet chain", __func__);
@@ -2610,6 +2737,15 @@ VOS_STATUS hdd_rx_packet_cbk( v_VOID_t *vosContext,
       status = vos_pkt_get_os_packet( pVosPacket, (v_VOID_t **)&skb, VOS_FALSE );
       if(!VOS_IS_STATUS_SUCCESS( status ))
       {
+
+        if(hdd_IsARP(pVosPacket))
+        {
+            ++pAdapter->hdd_stats.hddArpStats.rxDropped;
+            pAdapter->hdd_stats.hddArpStats.reason = HDD_FAILURE_EXTRACTING_SKB_FROM_VOS_PKT;
+            VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_ERROR,
+             "%s: ARP packet Dropped: Failure extracting skb from vos pkt",
+             __func__);
+        }
          ++pAdapter->hdd_stats.hddTxRxStats.rxDropped;
          VOS_TRACE( VOS_MODULE_ID_HDD_DATA, VOS_TRACE_LEVEL_ERROR,
                                 "%s: Failure extracting skb from vos pkt", __func__);
@@ -2671,6 +2807,25 @@ VOS_STATUS hdd_rx_packet_cbk( v_VOID_t *vosContext,
          }
       }
 
+      arp_pkt = vos_is_arp_pkt(skb, false);
+
+      if (arp_pkt)
+      {
+         if (pHddCtx->track_arp_ip && vos_check_arp_rsp_src_ip(skb, false)) {
+            ++pAdapter->hdd_stats.hddArpStats.rx_arp_rsp_count;
+            track_arp_resp = true;
+            VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_INFO,
+                     "%s :STA RX ARP received",__func__);
+         }
+      }
+
+      if (pHddCtx->rx_wow_dump) {
+          if (!(VOS_PKT_PROTO_TYPE_ARP & proto_type) &&
+              !(VOS_PKT_PROTO_TYPE_EAPOL & proto_type))
+             hdd_log_ip_addr(skb);
+          pHddCtx->rx_wow_dump = false;
+      }
+
       if (pHddCtx->cfg_ini->gEnableRoamDelayStats)
       {
           vos_record_roam_event(e_HDD_RX_PKT_CBK_TIME, (void *)skb, 0);
@@ -2687,6 +2842,14 @@ VOS_STATUS hdd_rx_packet_cbk( v_VOID_t *vosContext,
       ++pAdapter->hdd_stats.hddTxRxStats.rxPackets;
       ++pAdapter->stats.rx_packets;
       pAdapter->stats.rx_bytes += skb->len;
+
+      if (arp_pkt)
+      {
+         pAdapter->dad |= hdd_is_duplicate_ip_arp(skb);
+         if(pAdapter->dad)
+         VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_ERROR,
+                   "%s :Duplicate IP detected",__func__);
+      }
 #ifdef WLAN_FEATURE_HOLD_RX_WAKELOCK
        vos_wake_lock_timeout_release(&pHddCtx->rx_wake_lock,
                           HDD_WAKE_LOCK_DURATION,
@@ -2703,11 +2866,30 @@ VOS_STATUS hdd_rx_packet_cbk( v_VOID_t *vosContext,
 
       if (NET_RX_SUCCESS == rxstat)
       {
+
+        if (arp_pkt)
+        {
+           if (track_arp_resp) {
+              ++pAdapter->hdd_stats.hddArpStats.rxDelivered;
+              VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_INFO,
+                        "STA RX ARP packet Delivered to net stack");
+           }
+        }
+
          ++pAdapter->hdd_stats.hddTxRxStats.rxDelivered;
          ++pAdapter->hdd_stats.hddTxRxStats.pkt_rx_count;
       }
       else
       {
+
+        if (arp_pkt)
+        {
+           ++pAdapter->hdd_stats.hddArpStats.rxRefused;
+           pAdapter->hdd_stats.hddArpStats.reason = HDD_STA_RX_ARP_PACKET_REFUSED_IN_NET_STACK;
+           VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_ERROR,
+                     "%s :STA RX ARP packet Refused in net stack", __func__);
+        }
+
          ++pAdapter->hdd_stats.hddTxRxStats.rxRefused;
       }
       // now process the next packet in the chain

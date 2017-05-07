@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2016 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2017 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -753,6 +753,31 @@ static void vos_wd_detect_thread_stuck_cb(void *priv)
 }
 
 /**
+ * vos_thread_stuck_timer_init - Initialize thread stuck timer
+ *
+ * @pWdContext: watchdog context.
+ *
+ * Return: void
+ */
+void vos_thread_stuck_timer_init(pVosWatchdogContext pWdContext)
+{
+    if (vos_timer_init_deferrable(&pWdContext->threadStuckTimer,
+                      VOS_TIMER_TYPE_SW,
+                      vos_wd_detect_thread_stuck_cb, NULL))
+        hddLog(LOGE, FL("Unable to initialize thread stuck timer"));
+    else
+    {
+        if (VOS_STATUS_SUCCESS !=
+                 vos_timer_start(&pWdContext->threadStuckTimer,
+                                 THREAD_STUCK_TIMER_VAL))
+            hddLog(LOGE, FL("Unable to start thread stuck timer"));
+        else
+            hddLog(LOG1, FL("Successfully started thread stuck timer"));
+    }
+
+}
+
+/**
  * wlan_logging_reset_thread_stuck_count()- Callback to
  * probe msg sent to Threads.
  *
@@ -827,21 +852,6 @@ VosWDThread
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(3,8,0))
   daemonize("WD_Thread");
 #endif
-  /* Initialize the timer to detect thread stuck issues */
-  if (vos_timer_init_deferrable(&pWdContext->threadStuckTimer,
-          VOS_TIMER_TYPE_SW,
-          vos_wd_detect_thread_stuck_cb, NULL)) {
-       hddLog(LOGE, FL("Unable to initialize thread stuck timer"));
-  }
-  else
-  {
-       if (VOS_STATUS_SUCCESS !=
-             vos_timer_start(&pWdContext->threadStuckTimer,
-                 THREAD_STUCK_TIMER_VAL))
-          hddLog(LOGE, FL("Unable to start thread stuck timer"));
-       else
-          hddLog(LOG1, FL("Successfully started thread stuck timer"));
-  }
 
   /*
   ** Ack back to the context from which the Watchdog thread has been
@@ -2195,4 +2205,24 @@ void vos_dump_stack(uint8_t thread_id)
           VOS_TRACE(VOS_MODULE_ID_VOSS, VOS_TRACE_LEVEL_ERROR,
                     "%s: Invalid thread %d invoked",__func__, thread_id);
    }
+}
+
+void vos_dump_thread_stacks(int threadId)
+{
+   /* Make sure that Vos Watchdog context has been initialized */
+   if (gpVosWatchdogContext == NULL)
+   {
+      VOS_TRACE(VOS_MODULE_ID_VOSS, VOS_TRACE_LEVEL_ERROR,
+          "%s: gpVosWatchdogContext == NULL", __func__);
+      return;
+   }
+     hddLog(LOGE, FL("Thread Stuck count reached threshold!!!"
+              "MC Count %d RX count %d TX count %d"),
+              gpVosWatchdogContext->mcThreadStuckCount,
+              gpVosWatchdogContext->rxThreadStuckCount,
+              gpVosWatchdogContext->txThreadStuckCount);
+
+   vos_dump_stack(MC_Thread);
+   vos_dump_stack(TX_Thread);
+   vos_dump_stack(RX_Thread);
 }

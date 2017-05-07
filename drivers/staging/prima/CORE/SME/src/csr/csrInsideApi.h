@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2016 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2017 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -223,8 +223,19 @@ typedef struct
     tListElem *pCurEntry;
 }tScanResultList;
 
-
-
+/**
+ * csr_scan_for_ssid_context() - Callback context for SSID scan
+ *
+ * @pMac: pMac handle
+ * @sessionId: scan session id
+ * @roamId: roam Id
+ */
+struct csr_scan_for_ssid_context
+{
+    tpAniSirGlobal pMac;
+    tANI_U32 sessionId;
+    tANI_U32 roamId;
+};
 
 #define CSR_IS_ROAM_REASON( pCmd, reason ) ( (reason) == (pCmd)->roamCmd.roamReason )
 #define CSR_IS_BETTER_PREFER_VALUE(v1, v2)   ((v1) > (v2))
@@ -1092,5 +1103,7 @@ void csr_remove_bssid_from_scan_list(tpAniSirGlobal pMac,
 #ifdef WLAN_FEATURE_AP_HT40_24G
 eHalStatus csrSetHT2040Mode(tpAniSirGlobal pMac, tANI_U32 sessionId, tANI_U8 cbMode);
 #endif
+void csrValidateScanChannels(tpAniSirGlobal pMac, tCsrScanRequest *pDstReq,
+               tCsrScanRequest *pSrcReq, tANI_U32 *new_index, tANI_U8 ch144_support);
 #endif
 

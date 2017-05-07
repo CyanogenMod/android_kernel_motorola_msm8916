@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2016 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2017 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -453,6 +453,7 @@ typedef struct
    v_PVOID_t            pWdiContext;             /* WDI context */
    WDA_state            wdaState ;               /* WDA state tracking */ 
    v_PVOID_t            wdaWdiCfgApiMsgParam ;   /* WDI API paramter tracking */
+   v_PVOID_t            wdaWdiCfgUpdateIntMsg ;  /* WDI API CFG update param tracking */
    vos_event_t          wdaWdiEvent;             /* WDI API sync event */
 
    /* Event to wait for tx completion */
@@ -524,6 +525,10 @@ typedef struct
    uint8_t  mgmt_pktfree_fail;
    vos_lock_t mgmt_pkt_lock;
 
+   /* debug connection status */
+   bool tx_aggr;
+   uint8_t sta_id;
+   uint8_t tid;
 } tWDA_CbContext ; 
 
 typedef struct
@@ -1187,6 +1192,7 @@ tSirRetStatus uMacPostCtrlMsg(void* pSirGlobal, tSirMbMsg* pMb);
 #define WDA_PER_ROAM_SCAN_TRIGGER_REQ   SIR_HAL_PER_ROAM_SCAN_TRIGGER_REQ
 #define WDA_PER_ROAM_SCAN_TRIGGER_RSP   SIR_HAL_PER_ROAM_SCAN_TRIGGER_RSP
 #endif
+#define WDA_UPDATE_CFG_INT_PARAM    SIR_HAL_UPDATE_CFG_INT_PARAM
 
 #ifdef WLAN_WAKEUP_EVENTS
 #define WDA_WAKE_REASON_IND    SIR_HAL_WAKE_REASON_IND  
@@ -1288,6 +1294,12 @@ tSirRetStatus uMacPostCtrlMsg(void* pSirGlobal, tSirMbMsg* pMb);
 #define WDA_MON_STOP_REQ                       SIR_HAL_MON_STOP_REQ
 #define WDA_START_RSSI_MONITOR_REQ             SIR_HAL_RSSI_MON_START_REQ
 #define WDA_STOP_RSSI_MONITOR_REQ              SIR_HAL_RSSI_MON_STOP_REQ
+
+/* ARP Debug */
+#define WDA_SET_ARP_STATS_REQ                 SIR_HAL_SET_ARP_STATS_REQ
+#define WDA_GET_ARP_STATS_REQ                 SIR_HAL_GET_ARP_STATS_REQ
+#define WDA_TRIGGER_ADD_BA_REQ                SIR_HAL_TRIGGER_ADD_BA_REQ
+#define WDA_GET_CON_STATUS                    SIR_HAL_GET_CON_STATUS
 
 tSirRetStatus wdaPostCtrlMsg(tpAniSirGlobal pMac, tSirMsgQ *pMsg);
 
@@ -1596,6 +1608,7 @@ WDA_DS_FinishULA
     txFlag
     timeStamp
     ucIsEapol
+    ucIsArp
     ucUP
 
    OUT
@@ -1625,6 +1638,7 @@ WDA_DS_BuildTxPacketInfo
   v_U32_t          txFlag,
   v_U32_t         timeStamp,
   v_U8_t          ucIsEapol,
+  v_U8_t          ucIsArp,
   v_U8_t          ucUP,
   v_U32_t         ucTxBdToken
 );

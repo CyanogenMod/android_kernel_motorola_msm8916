@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2016 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2017 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -994,6 +994,14 @@ typedef enum
 #define CFG_PER_ROAM_FULL_SCAN_RSSI_THRESHOLD_MIN     (5)
 #define CFG_PER_ROAM_FULL_SCAN_RSSI_THRESHOLD_MAX     (50)
 #define CFG_PER_ROAM_FULL_SCAN_RSSI_THRESHOLD_DEFAULT (10)
+
+/*
+ * Minimum RSSI value below which candidate will not be eligible for roam
+ */
+#define CFG_PER_ROAM_BAD_RSSI                     "gPERMinRssiThresholdForRoam"
+#define CFG_PER_ROAM_BAD_RSSI_MIN                 (-100)
+#define CFG_PER_ROAM_BAD_RSSI_MAX                 (-40)
+#define CFG_PER_ROAM_BAD_RSSI_DEFAULT             (-80)
 #endif
 
 #define CFG_QOS_WMM_PKT_CLASSIFY_BASIS_NAME                "PktClassificationBasis" // DSCP or 802.1Q
@@ -2025,7 +2033,7 @@ static __inline tANI_U32 defHddRateToDefCfgRate( tANI_U32 defRateIndex )
 #define CFG_TDLS_EXTERNAL_CONTROL                   "gTDLSExternalControl"
 #define CFG_TDLS_EXTERNAL_CONTROL_MIN               (0)
 #define CFG_TDLS_EXTERNAL_CONTROL_MAX               (1)
-#define CFG_TDLS_EXTERNAL_CONTROL_DEFAULT           (0)
+#define CFG_TDLS_EXTERNAL_CONTROL_DEFAULT           (1)
 
 #define CFG_TDLS_OFF_CHANNEL_SUPPORT_ENABLE          "gEnableTDLSOffChannel"
 #define CFG_TDLS_OFF_CHANNEL_SUPPORT_ENABLE_MIN      (0)
@@ -2042,6 +2050,17 @@ static __inline tANI_U32 defHddRateToDefCfgRate( tANI_U32 defRateIndex )
 #define CFG_TDLS_SCAN_COEX_SUPPORT_ENABLE_MAX        (1)
 #define CFG_TDLS_SCAN_COEX_SUPPORT_ENABLE_DEFAULT    (0)
 
+/* Enable/Disable Consecutive Beacon miss */
+#define CFG_ENABLE_CONSECUTIVE_BMISS_NAME        "gEnableConcBmiss"
+#define CFG_ENABLE_CONSECUTIVE_BMISS_MIN         ( 2 )
+#define CFG_ENABLE_CONSECUTIVE_BMISS_MAX         ( 10 )
+#define CFG_ENABLE_CONSECUTIVE_BMISS_DEFAULT     ( 5 )
+
+/* Enable/Disable units of beacon wait time */
+#define CFG_ENABLE_UNITS_BEACON_WAIT_NAME        "gEnableUnitBwait"
+#define CFG_ENABLE_UNITS_BEACON_WAIT_MIN         ( 2 )
+#define CFG_ENABLE_UNITS_BEACON_WAIT_MAX         ( 10 )
+#define CFG_ENABLE_UNITS_BEACON_WAIT_DEFAULT     ( 2 )
 
 /* if gEnableTDLSScan
  * 0: Same as gEnableTDLSScanCoexistence ; driver will do disconnect if
@@ -2852,6 +2871,10 @@ This feature requires the dependent cfg.ini "gRoamPrefer5GHz" set to 1 */
 #define CFG_SAP_PROBE_RESP_OFFLOAD_MAX     (1)
 #define CFG_SAP_PROBE_RESP_OFFLOAD_DEFAULT (1)
 
+#define CFG_SAP_INTERNAL_RESTART_NAME    "gEnableSapInternalRestart"
+#define CFG_SAP_INTERNAL_RESTART_MIN     (0)
+#define CFG_SAP_INTERNAL_RESTART_MAX     (1)
+#define CFG_SAP_INTERNAL_RESTART_DEFAULT (1)
 
 /*--------------------------------------------------------------------------- 
   Type declarations
@@ -3075,6 +3098,7 @@ typedef struct
    v_BOOL_t                     isPERRoamRxPathEnabled;
    v_BOOL_t                     isPERRoamCCAEnabled;
    v_S15_t                      PERRoamFullScanThreshold;
+   v_S15_t                      PERMinRssiThresholdForRoam;
    v_U16_t                      rateUpThreshold;
    v_U16_t                      rateDownThreshold;
    v_U16_t                      PERroamTriggerPercent;
@@ -3252,6 +3276,8 @@ typedef struct
    v_BOOL_t                    fEnableActiveModeOffload;
 #endif
    v_U32_t                     enableLpwrImgTransition;
+   v_U32_t                     enable_conc_bmiss;
+   v_U32_t                     enable_units_bwait;
    v_U8_t                      scanAgingTimeout;
    v_BOOL_t                    enableTxLdpc;
    v_U8_t                      disableLDPCWithTxbfAP;
@@ -3410,6 +3436,7 @@ typedef struct
    uint32_t                    edca_be_aifs;
    v_BOOL_t                    sendMgmtPktViaWQ5;
    v_BOOL_t                    sap_probe_resp_offload;
+   v_BOOL_t                    sap_internal_restart;
 } hdd_config_t;
 
 /*--------------------------------------------------------------------------- 
